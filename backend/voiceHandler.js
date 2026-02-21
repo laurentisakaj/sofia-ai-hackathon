@@ -191,8 +191,8 @@ export async function handleVoiceConnection(ws, req) {
           },
           realtimeInputConfig: {
             automaticActivityDetection: {
-              startOfSpeechSensitivity: "HIGH",
-              endOfSpeechSensitivity: "LOW",
+              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
               silenceDurationMs: 700
             }
           },
