@@ -1,0 +1,25 @@
+node_modules
+dist
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Data files (generated at runtime)
+data/*.json
+!data/.gitkeep
+
+# Editor
+.vscode
+.idea
+.DS_Store
+*.sw?
+
+# Keys
+*.pem
+
+# Backups
+backups/
+server.js.backup
