@@ -265,21 +265,34 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, compact = false,
 
           {/* Attachments */}
           {!isUser && message.attachments && message.attachments.length > 0 && (
-            <div className={`flex flex-col gap-2 ${compact ? 'mt-1.5' : 'mt-2'} w-full`}>
+            <div className={`${compact ? 'mt-1.5' : 'mt-2'} w-full`}>
               {(() => {
                 const seen = new Set<string>();
-                return message.attachments.filter(att => {
+                const filtered = message.attachments.filter(att => {
                   if (att.type === 'booking_options') {
                     const hotelName = att.payload?.hotel_name || att.title;
                     if (seen.has(hotelName)) return false;
                     seen.add(hotelName);
                   }
                   return true;
-                }).map((attachment, idx) => (
-                  <div key={idx} className="card-animate-in" style={{ animationDelay: `${idx * 120}ms`, opacity: 0 }}>
-                    <AttachmentCard attachment={attachment} compact={compact} />
+                });
+                const isMulti = filtered.length > 1;
+                return (
+                  <div className={isMulti
+                    ? 'flex flex-row gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory'
+                    : 'flex flex-col gap-2'
+                  }>
+                    {filtered.map((attachment, idx) => (
+                      <div
+                        key={idx}
+                        className={`card-animate-in flex-shrink-0 ${isMulti ? 'w-[280px] snap-start' : 'w-full'}`}
+                        style={{ animationDelay: `${idx * 120}ms`, opacity: 0 }}
+                      >
+                        <AttachmentCard attachment={attachment} compact={compact} />
+                      </div>
+                    ))}
                   </div>
-                ));
+                );
               })()}
             </div>
           )}
