@@ -199,7 +199,7 @@ export async function handleVoiceConnection(ws, req) {
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } }
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
             }
           },
           sessionResumption: { handle: storedHandle || undefined },
