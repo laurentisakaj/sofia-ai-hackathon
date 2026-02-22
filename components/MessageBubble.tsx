@@ -167,7 +167,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, compact = false,
    */
   const renderFormattedText = (text: any) => {
     if (typeof text !== 'string') return <span>{String(text)}</span>;
-    const parts = text.split(/(\*\*[\s\S]*?\*\*|\*[\s\S]*?\*)/g);
+    // Pre-process: strip ** bold markers from inside markdown link labels [**text**](url)
+    // so the bold splitter doesn't break the link pattern apart
+    const cleaned = text.replace(/\[(\*{1,2})(.*?)\1\]/g, '[$2]');
+    const parts = cleaned.split(/(\*\*[\s\S]*?\*\*|\*[\s\S]*?\*)/g);
 
     return parts.map((part, index) => {
       // Bold
