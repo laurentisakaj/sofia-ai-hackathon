@@ -1893,15 +1893,15 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ attachment, compact = f
               rel="noopener noreferrer"
               className="flex gap-3 p-3 hover:bg-oro-soft/10 transition-colors cursor-pointer group block"
             >
-              {tour.image && (
-                <img src={tour.image} alt={tour.title} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+              {(tour.photoUrl || tour.image) && (
+                <img src={tour.photoUrl || tour.image} alt={tour.title} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-espresso line-clamp-2 leading-tight group-hover:text-oro transition-colors">{tour.title}</p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {tour.duration && (
+                  {(tour.durationText || tour.duration) && (
                     <span className="text-[10px] text-stone-400 flex items-center gap-0.5">
-                      <Clock size={10} /> {tour.duration}
+                      <Clock size={10} /> {tour.durationText || tour.duration}
                     </span>
                   )}
                   {tour.city && (
@@ -1909,14 +1909,14 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ attachment, compact = f
                       <MapPin size={10} /> {tour.city}
                     </span>
                   )}
-                  {tour.reviews > 0 && (
+                  {(tour.reviewCount || tour.reviews) > 0 && (
                     <span className="text-[10px] text-oro flex items-center gap-0.5">
-                      <Star size={10} className="fill-oro" /> {tour.rating?.toFixed(1)} ({tour.reviews})
+                      <Star size={10} className="fill-oro" /> {tour.rating?.toFixed(1)} ({tour.reviewCount || tour.reviews})
                     </span>
                   )}
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
-                  <p className="text-sm font-bold text-oro">{tl.from} €{tour.price}</p>
+                  <p className="text-sm font-bold text-oro">{tl.from} {tour.price && tour.price !== 'N/A' ? tour.price : '—'}</p>
                   <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full group-hover:bg-emerald-600 group-hover:text-cream transition-colors">
                     {bl} →
                   </span>
