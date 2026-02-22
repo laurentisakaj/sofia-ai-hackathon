@@ -35,6 +35,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, compact = false,
         const label = mdLinkMatch[1];
         const url = mdLinkMatch[2];
         const isWhatsApp = url.includes('wa.me') || url.includes('whatsapp.com');
+        const isTour = url.includes('bokun.io') || url.includes('experience/') || label.toLowerCase().includes('tour') || label.toLowerCase().includes('activit') || label.toLowerCase().includes('esperienz') || label.toLowerCase().includes('view all');
+        const isBooking = url.includes('hotelincloud.com') || url.includes('/q/') || label.toLowerCase().includes('quotat') || label.toLowerCase().includes('prenota') || label.toLowerCase().includes('book');
 
         if (isWhatsApp) {
           return (
@@ -48,6 +50,35 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, compact = false,
             >
               <MessageCircle size={14} fill="white" className="text-white" />
               Chat on WhatsApp
+            </a>
+          );
+        }
+
+        if (isTour) {
+          return (
+            <a
+              key={i}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 bg-espresso text-cream px-3 py-1.5 rounded-full font-medium hover:bg-espresso/80 transition-colors mx-1 no-underline shadow-sm text-xs md:text-sm transform hover:scale-105 duration-200 my-1"
+            >
+              <Sparkles size={13} />
+              {label}
+            </a>
+          );
+        }
+
+        if (isBooking) {
+          return (
+            <a
+              key={i}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 bg-oro text-white px-3 py-1.5 rounded-full font-medium hover:bg-oro/80 transition-colors mx-1 no-underline shadow-sm text-xs md:text-sm transform hover:scale-105 duration-200 my-1"
+            >
+              {label}
             </a>
           );
         }
