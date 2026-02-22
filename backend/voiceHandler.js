@@ -172,6 +172,19 @@ export async function handleVoiceConnection(ws, req) {
   let setupMsg = null; // Stored at function scope so reconnect handler can access it
   let reconnecting = false; // Guard against concurrent reconnection attempts
 
+  // Safe send wrapper — checks readyState before sending (function scope so client handler can access it)
+  function geminiSend(data) {
+    try {
+      if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+        geminiWs.send(typeof data === 'string' ? data : JSON.stringify(data));
+      } else {
+        console.warn(`[VOICE] ${sessionId} geminiSend skipped — WS not open (state=${geminiWs?.readyState})`);
+      }
+    } catch (err) {
+      console.error(`[VOICE] ${sessionId} geminiSend error:`, err.message);
+    }
+  }
+
   try {
     geminiWs = new WebSocket(uri);
     sessionData.geminiWs = geminiWs; // Store for cleanup
@@ -186,14 +199,7 @@ export async function handleVoiceConnection(ws, req) {
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
-            }
-          },
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
-              silenceDurationMs: 700
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } }
             }
           },
           sessionResumption: { handle: storedHandle || undefined },
@@ -215,19 +221,6 @@ export async function handleVoiceConnection(ws, req) {
       geminiSend(setupMsg);
       // Do NOT signal frontend ready yet — wait for setupComplete
     });
-
-    // Safe send wrapper — checks readyState before sending
-    function geminiSend(data) {
-      try {
-        if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
-          geminiWs.send(typeof data === 'string' ? data : JSON.stringify(data));
-        } else {
-          console.warn(`[VOICE] ${sessionId} geminiSend skipped — WS not open (state=${geminiWs?.readyState})`);
-        }
-      } catch (err) {
-        console.error(`[VOICE] ${sessionId} geminiSend error:`, err.message);
-      }
-    }
 
     // --- Reconnect logic (Bug 3 fix) ---
     async function reconnectGemini(reason) {
@@ -359,12 +352,15 @@ export async function handleVoiceConnection(ws, req) {
           // Gemini sends fragments with leading space for word boundaries, no space for continuations
           // e.g. " of" + "fer" should become "offer", not "of fer"
           if (content.inputTranscription && content.inputTranscription.text) {
-            const rawText = content.inputTranscription.text;
+            let rawText = content.inputTranscription.text;
+            // Filter out Gemini Live control character artifacts
+            rawText = rawText.replace(/<ctrl\d+>/gi, '');
             if (rawText) {
               userTranscriptBuffer += rawText;
               // Send full accumulated buffer (trimmed) so frontend can replace (not append)
-              if (ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: 'user_transcript', text: userTranscriptBuffer.trim(), replace: true }));
+              const cleanText = userTranscriptBuffer.trim();
+              if (cleanText && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'user_transcript', text: cleanText, replace: true }));
               }
             }
           }
@@ -374,6 +370,8 @@ export async function handleVoiceConnection(ws, req) {
             let text = content.outputTranscription.text.trim();
             // Strip leaked [suggestions: ...] lines from voice output (may or may not have closing bracket)
             text = text.replace(/\[suggestions?:.*$/gim, '').trim();
+            // Filter out Gemini Live control character artifacts (e.g. <ctrl46>, <ctrl0>)
+            text = text.replace(/<ctrl\d+>/gi, '').trim();
             if (text) {
               outputTextThisTurn += text + ' ';
               if (ws.readyState === 1) {

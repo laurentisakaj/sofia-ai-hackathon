@@ -124,14 +124,7 @@ export async function handlePhoneConnection(ws, req) {
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Fenrir" } }
-            }
-          },
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
-              silenceDurationMs: 700
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
             }
           },
           sessionResumption: { handle: storedHandle || undefined },
