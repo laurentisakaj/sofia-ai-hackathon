@@ -30,13 +30,27 @@ const fetchPartnerTours = async (query = '', category = '') => {
       if (!res.ok) throw new Error(`Bokun API returned ${res.status}`);
       const data = await res.json();
 
+      // Log first item's price structure once to diagnose field names
+      if (data.items?.[0]) console.log('[BOKUN] price sample:', JSON.stringify(data.items[0].price));
       allTours = (data.items || []).map(item => ({
         id: item.id,
         title: item.title,
         excerpt: item.excerpt || '',
         durationText: item.durationText || '',
-        price: item.price ? `€${item.price.amount}` : 'N/A',
-        priceAmount: item.price?.amount || 999,
+        price: (() => {
+          const p = item.price;
+          if (p == null) return null;
+          // Bokun returns price as a plain number (e.g. 54.0)
+          // but may also be an object with .amount in some API versions
+          const amt = (typeof p === 'number') ? p : (p.amount ?? p.value ?? p.regularPrice ?? null);
+          return (amt != null && amt > 0) ? `€${Math.round(amt)}` : null;
+        })(),
+        priceAmount: (() => {
+          const p = item.price;
+          if (p == null) return 999;
+          const amt = (typeof p === 'number') ? p : (p.amount ?? p.value ?? p.regularPrice ?? 999);
+          return amt || 999;
+        })(),
         rating: item.reviewAverageScore || null,
         reviewCount: item.reviewCount || 0,
         categories: (item.categories || []).map(c => c.title?.toLowerCase()).filter(Boolean),
