@@ -12,7 +12,6 @@ COPY index.html embed.html vite.config.ts tsconfig*.json tailwind.config.* postc
 COPY index.tsx index.css App.tsx embed.tsx types.ts constants.ts ./
 COPY components/ components/
 COPY services/ services/
-COPY assets/ assets/
 COPY public/ public/
 
 # Build frontend
