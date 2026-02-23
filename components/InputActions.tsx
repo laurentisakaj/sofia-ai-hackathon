@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, Camera, Image as ImageIcon, Navigation, Plus, X } from 'lucide-react';
+import { Mic, Camera, Image as ImageIcon, Navigation, Plus, X, Video } from 'lucide-react';
 
 interface InputActionsProps {
     onLocationClick: () => void;
     onImageClick: () => void;
     onCameraClick: () => void;
     onVoiceClick: () => void;
+    onVideoClick?: () => void;
     isLocating: boolean;
     isRecording: boolean;
     hasLocation: boolean;
@@ -18,6 +19,7 @@ const InputActions: React.FC<InputActionsProps> = ({
     onImageClick,
     onCameraClick,
     onVoiceClick,
+    onVideoClick,
     isLocating,
     isRecording,
     hasLocation,
@@ -30,6 +32,7 @@ const InputActions: React.FC<InputActionsProps> = ({
     // Capabilities to scroll through
     const capabilities = [
         { icon: <Mic size={20} />, label: 'Voice' },
+        { icon: <Video size={20} />, label: 'Video' },
         { icon: <Camera size={20} />, label: 'Camera' },
         { icon: <ImageIcon size={20} />, label: 'Photo' },
         { icon: <Navigation size={20} />, label: 'Map' },
@@ -101,7 +104,7 @@ const InputActions: React.FC<InputActionsProps> = ({
                     {/* Backdrop to close */}
                     <div className="fixed inset-0 z-[15]" onClick={() => setIsOpen(false)} />
 
-                    <div className="absolute bottom-16 left-2 bg-cream rounded-2xl shadow-xl border border-stone-200/60 p-2 flex gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 z-[20] min-w-[200px]">
+                    <div className="absolute bottom-16 left-2 bg-cream rounded-2xl shadow-xl border border-stone-200/60 p-2 flex gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 z-[20] min-w-[250px]">
                         <ActionButton
                             icon={<Mic size={20} />}
                             label="Voice"
@@ -109,6 +112,14 @@ const InputActions: React.FC<InputActionsProps> = ({
                             active={isRecording}
                             color="text-red-500 bg-red-50"
                         />
+                        {onVideoClick && (
+                            <ActionButton
+                                icon={<Video size={20} />}
+                                label="Video"
+                                onClick={() => { onVideoClick(); setIsOpen(false); }}
+                                color="text-blue-500 bg-blue-50"
+                            />
+                        )}
                         <ActionButton
                             icon={<Camera size={20} />}
                             label="Lens"

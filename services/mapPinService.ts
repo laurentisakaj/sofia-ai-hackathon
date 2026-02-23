@@ -67,3 +67,7 @@ export function clearPins(): void {
 export function getPinCount(): number {
   return getPins().length;
 }
+
+export function isPinned(lat: number, lng: number): boolean {
+  return getPins().some(p => Math.abs(p.lat - lat) < 0.0001 && Math.abs(p.lng - lng) < 0.0001);
+}

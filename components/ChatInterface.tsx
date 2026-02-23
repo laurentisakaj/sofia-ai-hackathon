@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SendHorizontal, Loader2, RefreshCw, Clock, Navigation, Image as ImageIcon, X, Mic, Camera, SwitchCamera, Map } from 'lucide-react';
 import MapView from './MapView';
+import ConsentModal from './ConsentModal';
 import { Message, Sender, ChatState } from '../types';
 import { sendMessageToGemini, initializeChat, resetChat } from '../services/geminiService';
 import { storageService } from '../services/storageService';
@@ -15,38 +16,83 @@ interface ChatInterfaceProps {
   // No props needed
 }
 
-// Helper to detect if browser is set to Italian
-const isBrowserItalian = (): boolean => {
-  return navigator.language.toLowerCase().startsWith('it');
+// Detect browser language — returns 2-letter code: it, fr, de, es, en (default)
+const getBrowserLang = (): string => {
+  const lang = navigator.language.toLowerCase();
+  if (lang.startsWith('it')) return 'it';
+  if (lang.startsWith('fr')) return 'fr';
+  if (lang.startsWith('de')) return 'de';
+  if (lang.startsWith('es')) return 'es';
+  return 'en';
 };
 
-// Helper (omitted for brevity, assume getGreeting/getInitialMessage/getWelcomeChips same)
-const getGreeting = (isItalian: boolean): string => {
+// Helper to detect if browser is set to Italian (kept for backward compat throughout component)
+const isBrowserItalian = (): boolean => getBrowserLang() === 'it';
+
+const GREETINGS: Record<string, { morning: string; afternoon: string; evening: string; night: string }> = {
+  it: { morning: 'Buongiorno', afternoon: 'Buon pomeriggio', evening: 'Buonasera', night: 'Buonasera' },
+  en: { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening', night: 'Hello' },
+  fr: { morning: 'Bonjour', afternoon: 'Bon après-midi', evening: 'Bonsoir', night: 'Bonsoir' },
+  de: { morning: 'Guten Morgen', afternoon: 'Guten Tag', evening: 'Guten Abend', night: 'Guten Abend' },
+  es: { morning: 'Buenos días', afternoon: 'Buenas tardes', evening: 'Buenas tardes', night: 'Buenas noches' },
+};
+
+const getGreeting = (_isItalian: boolean): string => {
+  const lang = getBrowserLang();
+  const g = GREETINGS[lang] || GREETINGS.en;
   const hour = parseInt(new Date().toLocaleString('en-US', {
     timeZone: 'Europe/Rome',
     hour: '2-digit',
     hour12: false
   }));
-  if (hour >= 5 && hour < 12) return isItalian ? 'Buongiorno' : 'Good morning';
-  if (hour >= 12 && hour < 17) return isItalian ? 'Buon pomeriggio' : 'Good afternoon';
-  if (hour >= 17 && hour < 21) return isItalian ? 'Buonasera' : 'Good evening';
-  return isItalian ? 'Buonasera' : 'Hello';
+  if (hour >= 5 && hour < 12) return g.morning;
+  if (hour >= 12 && hour < 17) return g.afternoon;
+  if (hour >= 17 && hour < 21) return g.evening;
+  return g.night;
 };
 
-const getInitialMessage = (isItalian: boolean, greeting: string) => {
+const WELCOME_MSGS: Record<string, { returning: string; first: string }> = {
+  it: {
+    returning: `Bentornato/a! Sono ${BOT_NAME}, la tua concierge digitale. Come posso aiutarti oggi?`,
+    first: `Sono ${BOT_NAME}, la tua concierge digitale per gli Ognissanti Hotels a Firenze. Posso verificare disponibilità e prezzi, cercare ristoranti e attrazioni, controllare la tua prenotazione, mostrarti gli orari dei treni e molto altro. Come posso aiutarti?`,
+  },
+  en: {
+    returning: `Welcome back! I'm ${BOT_NAME}, your digital concierge. How can I help you today?`,
+    first: `I'm ${BOT_NAME}, your digital concierge for Ognissanti Hotels in Florence. I can check room availability & prices, find restaurants & attractions, look up your reservation, show train schedules, and much more. How can I help you?`,
+  },
+  fr: {
+    returning: `Content(e) de vous revoir ! Je suis ${BOT_NAME}, votre concierge digitale. Comment puis-je vous aider aujourd'hui ?`,
+    first: `Je suis ${BOT_NAME}, votre concierge digitale pour les Ognissanti Hotels à Florence. Je peux vérifier la disponibilité et les prix, trouver des restaurants et des attractions, consulter votre réservation, afficher les horaires des trains et bien plus encore. Comment puis-je vous aider ?`,
+  },
+  de: {
+    returning: `Willkommen zurück! Ich bin ${BOT_NAME}, Ihre digitale Concierge. Wie kann ich Ihnen heute helfen?`,
+    first: `Ich bin ${BOT_NAME}, Ihre digitale Concierge für die Ognissanti Hotels in Florenz. Ich kann Zimmerverfügbarkeit und Preise prüfen, Restaurants und Sehenswürdigkeiten finden, Ihre Reservierung nachschlagen, Fahrpläne anzeigen und vieles mehr. Wie kann ich Ihnen helfen?`,
+  },
+  es: {
+    returning: `¡Bienvenido/a de nuevo! Soy ${BOT_NAME}, tu concierge digital. ¿Cómo puedo ayudarte hoy?`,
+    first: `Soy ${BOT_NAME}, tu concierge digital para los Ognissanti Hotels en Florencia. Puedo verificar disponibilidad y precios, encontrar restaurantes y atracciones, consultar tu reserva, mostrar horarios de trenes y mucho más. ¿Cómo puedo ayudarte?`,
+  },
+};
+
+const getInitialMessage = (_isItalian: boolean, greeting: string) => {
+  const lang = getBrowserLang();
+  const msgs = WELCOME_MSGS[lang] || WELCOME_MSGS.en;
   const guestName = localStorage.getItem('ognissanti_guest_name');
   const firstName = (typeof guestName === 'string') ? guestName.split(' ')[0] : null;
-  if (isItalian) {
-    if (firstName) return `${greeting}, ${firstName}! Bentornato/a! Sono ${BOT_NAME}, la tua concierge digitale. Come posso aiutarti oggi?`;
-    return `${greeting}! Sono ${BOT_NAME}, la tua concierge digitale per gli Ognissanti Hotels a Firenze. Posso verificare disponibilità e prezzi, cercare ristoranti e attrazioni, controllare la tua prenotazione, mostrarti gli orari dei treni e molto altro. Come posso aiutarti?`;
-  }
-  if (firstName) return `${greeting}, ${firstName}! Welcome back! I'm ${BOT_NAME}, your digital concierge. How can I help you today?`;
-  return `${greeting}! I'm ${BOT_NAME}, your digital concierge for Ognissanti Hotels in Florence. I can check room availability & prices, find restaurants & attractions, look up your reservation, show train schedules, and much more. How can I help you?`;
+  if (firstName) return `${greeting}, ${firstName}! ${msgs.returning}`;
+  return `${greeting}! ${msgs.first}`;
 };
 
-const getWelcomeChips = (isItalian: boolean): string[] => {
-  if (isItalian) return ['Verifica Disponibilità', 'Trova Ristoranti', 'La mia Prenotazione', 'Orari Treni', 'Cosa Vedere'];
-  return ['Check Availability', 'Find Restaurants', 'My Reservation', 'Train Departures', 'Things to Do'];
+const WELCOME_CHIPS: Record<string, string[]> = {
+  it: ['Verifica Disponibilità', 'Trova Ristoranti', 'La mia Prenotazione', 'Orari Treni', 'Cosa Vedere'],
+  en: ['Check Availability', 'Find Restaurants', 'My Reservation', 'Train Departures', 'Things to Do'],
+  fr: ['Vérifier Disponibilité', 'Trouver Restaurants', 'Ma Réservation', 'Horaires Trains', 'À Voir'],
+  de: ['Verfügbarkeit Prüfen', 'Restaurants Finden', 'Meine Buchung', 'Zugfahrpläne', 'Sehenswürdigkeiten'],
+  es: ['Ver Disponibilidad', 'Buscar Restaurantes', 'Mi Reserva', 'Horarios Trenes', 'Qué Ver'],
+};
+
+const getWelcomeChips = (_isItalian: boolean): string[] => {
+  return WELCOME_CHIPS[getBrowserLang()] || WELCOME_CHIPS.en;
 };
 
 // Detect if running inside widget iframe
@@ -71,6 +117,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [pinCount, setPinCount] = useState(() => getPinCount());
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+  const [autoStartCamera, setAutoStartCamera] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [consentGranted, setConsentGranted] = useState(() => localStorage.getItem('ognissanti_consent_granted') === 'true');
+  const [pendingVideoMode, setPendingVideoMode] = useState(false); // true = user tapped Video, not Voice
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -361,7 +411,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
         if (liveUserMsgIdRef.current) {
           msgs = msgs.map(m => m.id === liveUserMsgIdRef.current ? { ...m, text: userText } : m);
         } else {
-          msgs.push({ id: `voice-user-${Date.now()}`, text: userText, sender: Sender.User, timestamp: new Date() });
+          // Deduplicate: skip if the last user message already has the same text
+          // (can happen when generationComplete triggers a reconnect and Gemini replays)
+          const lastUserMsg = [...msgs].reverse().find(m => m.sender === Sender.User);
+          if (!lastUserMsg || lastUserMsg.text !== userText) {
+            msgs.push({ id: `voice-user-${Date.now()}`, text: userText, sender: Sender.User, timestamp: new Date() });
+          }
         }
       }
 
@@ -371,7 +426,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
         if (liveBotMsgIdRef.current) {
           msgs = msgs.map(m => m.id === liveBotMsgIdRef.current ? { ...m, text: finalText, attachments: attachments.length > 0 ? attachments : undefined } : m);
         } else {
-          msgs.push({ id: `voice-bot-${Date.now()}`, text: finalText, sender: Sender.Bot, timestamp: new Date(), attachments: attachments.length > 0 ? attachments : undefined });
+          // Deduplicate: skip if the last bot message already has the same text
+          const lastBotMsg = [...msgs].reverse().find(m => m.sender === Sender.Bot);
+          if (!lastBotMsg || lastBotMsg.text !== finalText) {
+            msgs.push({ id: `voice-bot-${Date.now()}`, text: finalText, sender: Sender.Bot, timestamp: new Date(), attachments: attachments.length > 0 ? attachments : undefined });
+          }
         }
       }
 
@@ -407,6 +466,62 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
     storageService.saveChatHistory([welcomeMsg]);
   };
 
+  // --- Consent + Voice/Video Mode Gate ---
+  const openVoiceWithConsent = (withVideo: boolean) => {
+    if (consentGranted) {
+      setAutoStartCamera(withVideo);
+      setIsVoiceOpen(true);
+    } else {
+      setPendingVideoMode(withVideo);
+      setShowConsentModal(true);
+    }
+  };
+
+  const handleConsentComplete = (permissions: { mic: boolean; camera: boolean; location: { lat: number; lng: number } | null }) => {
+    setConsentGranted(true);
+    setShowConsentModal(false);
+    if (permissions.location) setUserLocation(permissions.location);
+    setAutoStartCamera(pendingVideoMode);
+    setIsVoiceOpen(true);
+    setPendingVideoMode(false);
+  };
+
+  const handleConsentDismiss = () => {
+    setShowConsentModal(false);
+    setPendingVideoMode(false);
+  };
+
+  // Periodic location refresh while voice is open (60s interval, 50m movement threshold)
+  const locationRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (isVoiceOpen && navigator.geolocation) {
+      locationRefreshRef.current = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const newLat = pos.coords.latitude;
+            const newLng = pos.coords.longitude;
+            setUserLocation(prev => {
+              if (!prev) return { lat: newLat, lng: newLng };
+              // Only update if moved > 50m
+              const dlat = newLat - prev.lat;
+              const dlng = newLng - prev.lng;
+              const dist = Math.sqrt(dlat * dlat + dlng * dlng) * 111320; // rough meters
+              return dist > 50 ? { lat: newLat, lng: newLng } : prev;
+            });
+          },
+          () => {}, // Silently ignore refresh errors
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
+        );
+      }, 60000);
+    }
+    return () => {
+      if (locationRefreshRef.current) {
+        clearInterval(locationRefreshRef.current);
+        locationRefreshRef.current = null;
+      }
+    };
+  }, [isVoiceOpen]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -437,21 +552,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        setState(prev => ({
-          ...prev,
-          error: isItalian ? "L'immagine è troppo grande (max 5MB)" : "Image is too large (max 5MB)"
-        }));
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      setState(prev => ({
+        ...prev,
+        error: isItalian ? "L'immagine è troppo grande (max 5MB)" : "Image is too large (max 5MB)"
+      }));
+      return;
     }
+
+    // Convert to JPEG via canvas — handles HEIC and normalises all formats
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d')?.drawImage(img, 0, 0);
+      const jpeg = canvas.toDataURL('image/jpeg', 0.85);
+      setSelectedImage(jpeg);
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.onerror = () => {
+      // Fallback: read directly (for browsers that can't decode the format)
+      const reader = new FileReader();
+      reader.onloadend = () => setSelectedImage(reader.result as string);
+      reader.readAsDataURL(file);
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.src = objectUrl;
   };
 
   const handleRemoveImage = () => {
@@ -469,24 +598,52 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
     }
     if (isRecording && recognitionRef.current) {
       recognitionRef.current.stop();
+      recognitionRef.current = null;
       setIsRecording(false);
       return;
     }
     const rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.lang = isItalian ? 'it-IT' : 'en-US';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    // Use browser language for best accuracy — falls back to en-US
+    rec.lang = navigator.language || 'en-US';
     rec.onstart = () => setIsRecording(true);
     rec.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInputValue(prev => prev + (prev ? ' ' : '') + transcript);
-      setIsRecording(false);
+      let finalTranscript = '';
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+      if (finalTranscript) {
+        setInputValue(prev => (prev ? prev + ' ' : '') + finalTranscript.trim());
+      } else if (interimTranscript) {
+        // Show interim result in input as live preview (will be replaced by final)
+        setInputValue(prev => {
+          // Strip previous interim and replace with new interim
+          return (prev ? prev + ' ' : '') + interimTranscript;
+        });
+      }
     };
     rec.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
+      if (event.error !== 'no-speech') {
+        console.error('Speech recognition error:', event.error);
+      }
       setIsRecording(false);
     };
-    rec.onend = () => setIsRecording(false);
+    rec.onend = () => {
+      // Auto-restart if still in recording mode (continuous keeps going until user stops)
+      if (recognitionRef.current && isRecording) {
+        try { rec.start(); } catch {}
+      } else {
+        setIsRecording(false);
+      }
+    };
     recognitionRef.current = rec;
     rec.start();
   };
@@ -661,7 +818,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
             onLocationClick={handleLocationClick}
             onImageClick={() => fileInputRef.current?.click()}
             onCameraClick={openCamera}
-            onVoiceClick={() => setIsVoiceOpen(true)}
+            onVoiceClick={() => openVoiceWithConsent(false)}
+            onVideoClick={() => openVoiceWithConsent(true)}
             isLocating={isLocating}
             isRecording={isRecording}
             hasLocation={!!userLocation}
@@ -696,13 +854,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
         </p>
       </div>
 
+      {/* Consent Modal */}
+      {showConsentModal && (
+        <ConsentModal onComplete={handleConsentComplete} onDismiss={handleConsentDismiss} />
+      )}
+
       {/* Floating Voice Widget */}
       <VoiceWidget
         ref={voiceWidgetRef}
         isOpen={isVoiceOpen}
-        onClose={() => setIsVoiceOpen(false)}
+        onClose={() => { setIsVoiceOpen(false); setAutoStartCamera(false); }}
         onMessage={handleVoiceMessage}
         onLiveTranscript={handleLiveTranscript}
+        userLocation={userLocation}
+        autoStartCamera={autoStartCamera}
       />
 
       {/* Camera Modal */}

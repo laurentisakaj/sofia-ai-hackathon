@@ -883,6 +883,9 @@ const scrapeHotelPrices = async (hotelConfig, checkInStr, checkOutStr, adults, c
       city_tax: cityTaxPerPerson,
       options: options,
       booking_link: bookingLink,
+      // Location for map pins
+      lat: hotelConfig.lat,
+      lng: hotelConfig.lng,
       // Property-level services
       breakfast_included: hotelConfig.breakfast_included || false,
       breakfast_info: breakfastInfo,
@@ -1376,6 +1379,8 @@ const createQuotationDirect = async (args) => {
     });
     const data = await response.json();
     if (response.ok && data.success) return data;
+    console.error(`[QUOTATION-DIRECT] Failed (${response.status}): ${JSON.stringify(data).substring(0, 300)}`);
+    console.error(`[QUOTATION-DIRECT] Request body: ${JSON.stringify(args).substring(0, 500)}`);
     return { success: false, message: data.error || "Failed to create quotation." };
   } catch (e) {
     console.error("Failed to create quotation", e);

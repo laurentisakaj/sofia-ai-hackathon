@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, ExternalLink, Image as ImageIcon, CloudSun, Droplets, Sun, CloudRain, Wind, Building2, Calendar, Users, CreditCard, Check, Info, X, Utensils, Ban, Bus, Clock, Navigation, MessageCircle, Mail, CheckCircle2, Send, FileText, User, Moon, Tag, Star, Train, AlertCircle, Zap } from 'lucide-react';
 import { Attachment, BookingPayload, QuotationPayload } from '../types';
 import { storageService } from '../services/storageService';
-import { addPin } from '../services/mapPinService';
+import { addPin, isPinned } from '../services/mapPinService';
 
 // Hotel entrance photo mapping
 const hotelPhotoMap: Record<string, string> = {
@@ -573,6 +573,21 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ attachment, compact = f
         if (data.booking_com) setOtaPrice(data.booking_com);
       })
       .catch(() => { }); // Fail silently
+  }, [type, payload]);
+
+  // Auto-pin hotel on map when booking options are shown
+  useEffect(() => {
+    if (type !== 'booking_options' || !payload) return;
+    const bd = payload as any;
+    if (bd.lat && bd.lng && bd.hotel_name) {
+      addPin({
+        lat: bd.lat,
+        lng: bd.lng,
+        title: bd.hotel_name,
+        category: 'hotel',
+        description: `${bd.check_in} → ${bd.check_out} · ${bd.guests} guests`,
+      });
+    }
   }, [type, payload]);
 
   if (type === 'countdown' && payload) {
@@ -1837,10 +1852,10 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ attachment, compact = f
                     rating: place.rating, reviews: place.reviews,
                     mapLink: place.googleMapsUri || place.map_link
                   })}
-                  className="flex items-center text-oro hover:text-oro-light text-sm font-medium transition-colors"
+                  className={`flex items-center text-sm font-medium transition-colors ${isPinned(place.lat, place.lng) ? 'text-emerald-500' : 'text-oro hover:text-oro-light'}`}
                 >
-                  <MapPin className="w-4 h-4 mr-1" />
-                  Pin
+                  <MapPin className={`w-4 h-4 mr-1 ${isPinned(place.lat, place.lng) ? 'fill-emerald-500' : ''}`} />
+                  {isPinned(place.lat, place.lng) ? 'Pinned' : 'Pin'}
                 </button>
               )}
               {(place.googleMapsUri || place.map_link) && (

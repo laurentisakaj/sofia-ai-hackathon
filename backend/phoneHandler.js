@@ -108,6 +108,20 @@ export async function handlePhoneConnection(ws, req) {
   let geminiWs = null;
   let geminiSetupDone = false;
 
+  // Safe send wrapper — checks readyState before sending
+  // Defined at function scope so ws.on('message') can access it
+  function geminiSend(data) {
+    try {
+      if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+        geminiWs.send(typeof data === 'string' ? data : JSON.stringify(data));
+      } else {
+        console.warn(`[PHONE-WS] ${sessionId} geminiSend skipped — WS not open (state=${geminiWs?.readyState})`);
+      }
+    } catch (err) {
+      console.error(`[PHONE-WS] ${sessionId} geminiSend error:`, err.message);
+    }
+  }
+
   try {
     geminiWs = new WebSocket(uri);
 
@@ -125,8 +139,19 @@ export async function handlePhoneConnection(ws, req) {
             responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
-            }
+            },
+            enableAffectiveDialog: true,
+            thinkingConfig: { thinkingBudget: 0 },
           },
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              startOfSpeechSensitivity: "START_SENSITIVITY_LOW", // reduce false triggers from phone line noise
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW", // wait longer for mid-sentence pauses
+              prefixPaddingMs: 20,
+              silenceDurationMs: 300,
+            },
+          },
+          proactivity: { proactiveAudio: true },
           sessionResumption: { handle: storedHandle || undefined },
           contextWindowCompression: {
             slidingWindow: { targetTokens: 16384 },
@@ -137,27 +162,17 @@ export async function handlePhoneConnection(ws, req) {
           systemInstruction: {
             parts: [{ text: systemPrompt }]
           },
-          tools: getVoiceToolDeclarations().map(t => ({
-            functionDeclarations: t.functionDeclarations
-          }))
+          tools: [
+            ...getVoiceToolDeclarations().map(t => ({
+              functionDeclarations: t.functionDeclarations
+            })),
+            { googleSearch: {} } // Real-time web search during phone calls
+          ]
         }
       };
       console.log(`[PHONE-WS] ${sessionId} Gemini setup sent`);
       geminiSend(setupMsg);
     });
-
-    // Safe send wrapper — checks readyState before sending
-    function geminiSend(data) {
-      try {
-        if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
-          geminiWs.send(typeof data === 'string' ? data : JSON.stringify(data));
-        } else {
-          console.warn(`[PHONE-WS] ${sessionId} geminiSend skipped — WS not open (state=${geminiWs?.readyState})`);
-        }
-      } catch (err) {
-        console.error(`[PHONE-WS] ${sessionId} geminiSend error:`, err.message);
-      }
-    }
 
     const handleGeminiMessage = async (data) => {
       let msg;
@@ -331,6 +346,12 @@ export async function handlePhoneConnection(ws, req) {
               currentAssistantBuffer = '';
             }
             if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'turn_complete' }));
+          }
+
+          // generationComplete — Gemini finished this response.
+          // Do NOT reconnect here — handleGeminiClose handles it if Gemini actually closes.
+          if (content.generationComplete) {
+            console.log(`[PHONE-WS] ${sessionId} generationComplete received`);
           }
         }
 
@@ -543,8 +564,7 @@ export async function handlePhoneConnection(ws, req) {
       const reasonStr = reason ? reason.toString() : 'no reason';
       console.log(`[PHONE-WS] ${sessionId} Gemini closed: ${code} reason: ${reasonStr}`);
       if (ws.readyState !== 1) return; // Client already gone
-      if (code === 1000) return; // Normal close
-
+      // Always reconnect — Gemini sends generationComplete + close 1000 after first greeting
       await reconnectGemini(`close:${code}`);
     };
     geminiWs.on('close', handleGeminiClose);

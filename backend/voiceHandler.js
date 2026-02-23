@@ -200,8 +200,20 @@ export async function handleVoiceConnection(ws, req) {
             responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
-            }
+            },
+            mediaResolution: "MEDIA_RESOLUTION_LOW", // 66 tokens/frame vs 258 — 75% savings on camera/screen
+            enableAffectiveDialog: true,
+            thinkingConfig: { thinkingBudget: 0 },
           },
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW", // wait longer for mid-sentence pauses
+              prefixPaddingMs: 20,
+              silenceDurationMs: 300,
+            },
+          },
+          proactivity: { proactiveAudio: true },
           sessionResumption: { handle: storedHandle || undefined },
           contextWindowCompression: {
             slidingWindow: { targetTokens: 16384 },
@@ -212,9 +224,12 @@ export async function handleVoiceConnection(ws, req) {
           systemInstruction: {
             parts: [{ text: await buildSystemInstruction(null, 'voice') }]
           },
-          tools: getVoiceToolDeclarations().map(t => ({
-            functionDeclarations: t.functionDeclarations
-          }))
+          tools: [
+            ...getVoiceToolDeclarations().map(t => ({
+              functionDeclarations: t.functionDeclarations
+            })),
+            { googleSearch: {} } // Real-time web search during voice calls
+          ]
         }
       };
       console.log(`[VOICE -> GEMINI] ${sessionId} Setup: model=${setupMsg.setup.model}, tools=${setupMsg.setup.tools?.length || 0}`);
@@ -270,6 +285,18 @@ export async function handleVoiceConnection(ws, req) {
             geminiWs.on('close', handleGeminiClose);
             geminiWs.on('error', handleGeminiError);
             geminiSetupDone = true;
+
+            // Prevent Gemini from re-greeting after reconnect
+            geminiSend({
+              client_content: {
+                turns: [{
+                  role: 'user',
+                  parts: [{ text: '[SYSTEM: Session resumed after connection refresh. Do NOT greet or introduce yourself again. Just continue the conversation naturally. Wait for the user to speak.]' }]
+                }],
+                turn_complete: true
+              }
+            });
+
             console.log(`[VOICE] ${sessionId} Reconnected successfully (reason: ${reason})`);
             return;
           } catch (err) {
@@ -355,6 +382,13 @@ export async function handleVoiceConnection(ws, req) {
             let rawText = content.inputTranscription.text;
             // Filter out Gemini Live control character artifacts
             rawText = rawText.replace(/<ctrl\d+>/gi, '');
+            // Filter out non-Latin script transcriptions (Malayalam, CJK, Arabic, etc.)
+            // All expected languages (it/en/fr/de/es) use Latin characters
+            const nonLatinRatio = (rawText.replace(/[\u0000-\u024F\u1E00-\u1EFF\s\d.,!?'"():;\-–—…]/g, '').length) / (rawText.length || 1);
+            if (nonLatinRatio > 0.3) {
+              // More than 30% non-Latin chars — likely a transcription error, skip
+              return;
+            }
             if (rawText) {
               userTranscriptBuffer += rawText;
               // Send full accumulated buffer (trimmed) so frontend can replace (not append)
@@ -416,6 +450,13 @@ export async function handleVoiceConnection(ws, req) {
             if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'turnComplete' }));
           }
 
+          // Barge-in: user started speaking over Sofia — tell client to stop audio
+          if (content.interrupted) {
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'interrupted' }));
+            }
+          }
+
           if (content.modelTurn) {
             const parts = content.modelTurn.parts || [];
             const audioPart = parts.find(p => p.inlineData);
@@ -425,10 +466,16 @@ export async function handleVoiceConnection(ws, req) {
               ws.send(JSON.stringify({
                 type: 'response',
                 text: null,
-                audio: audioPart.inlineData.data,
-                isInterrupted: content.interrupted
+                audio: audioPart.inlineData.data
               }));
             }
+          }
+
+          // generationComplete — Gemini finished this response.
+          // Do NOT reconnect here — handleGeminiClose handles it if Gemini actually closes.
+          // Reconnecting on every generationComplete causes a reconnect loop + duplicate greetings.
+          if (content.generationComplete) {
+            console.log(`[VOICE] ${sessionId} generationComplete received`);
           }
         }
 
@@ -513,8 +560,8 @@ export async function handleVoiceConnection(ws, req) {
     const handleGeminiClose = async (code, reason) => {
       console.log(`[VOICE] ${sessionId} Gemini WS Closed code=${code} reason=${reason?.toString()}`);
       if (ws.readyState !== 1) return; // Client already gone
-      if (code === 1000) return; // Normal close
-
+      // Always reconnect — Gemini sends generationComplete + close 1000 after first greeting,
+      // which would kill the session if we skip reconnection
       await reconnectGemini(`close:${code}`);
     };
 
@@ -591,6 +638,61 @@ export async function handleVoiceConnection(ws, req) {
         };
         console.log(`[SERVER -> GEMINI] ${sessionId} Interrupt`);
         geminiSend(stopMsg);
+      } else if (message.type === 'audio_stream_end') {
+        // User muted mic — flush cached audio buffer so stale audio isn't processed on unmute
+        geminiSend({
+          realtime_input: {
+            audioStreamEnd: true
+          }
+        });
+      } else if (message.type === 'video_frame' && message.content) {
+        // Forward camera/screen frame to Gemini Live as video input
+        geminiSend({
+          realtime_input: {
+            media_chunks: [{
+              mime_type: message.mimeType || 'image/jpeg',
+              data: message.content
+            }]
+          }
+        });
+
+      } else if (message.type === 'location') {
+        // User's GPS location — validate and inject into Gemini context
+        const lat = parseFloat(message.lat);
+        const lng = parseFloat(message.lng);
+        if (isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          console.log(`[VOICE] ${sessionId} Location received: ${lat},${lng}`);
+          geminiSend({
+            client_content: {
+              turns: [{
+                role: 'user',
+                parts: [{ text: `[SYSTEM: The user's current GPS location is latitude ${lat.toFixed(6)}, longitude ${lng.toFixed(6)}. Use this for directions, nearby recommendations, and location-aware assistance. Do NOT read this aloud or acknowledge it — just use it naturally when relevant.]` }]
+              }],
+              turn_complete: true
+            }
+          });
+        }
+
+      } else if (message.type === 'set_speech_speed') {
+        // Speech speed preference from client
+        const speed = message.speed;
+        if (['normal', 'slow', 'fast'].includes(speed)) {
+          console.log(`[VOICE] ${sessionId} Speech speed set to: ${speed}`);
+          const speedInstructions = {
+            normal: 'Speak at your normal conversational pace.',
+            slow: 'Speak slowly and clearly, pausing between phrases. The user has requested slower speech.',
+            fast: 'Speak at a brisk, efficient pace. The user prefers faster speech.',
+          };
+          geminiSend({
+            client_content: {
+              turns: [{
+                role: 'user',
+                parts: [{ text: `[SYSTEM: ${speedInstructions[speed]}]` }]
+              }],
+              turn_complete: true
+            }
+          });
+        }
       }
 
     } catch (err) {
