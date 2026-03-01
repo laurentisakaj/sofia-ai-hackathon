@@ -608,8 +608,33 @@ router.get('/api/admin/analytics', requireAuth, async (req, res) => {
       } catch (_) { }
     });
 
+    // Quotation funnel (from persisted revenue events)
+    const quotationsCreated = stats.filter(s => s.type === 'QUOTATION_CREATED');
+    const bookingClicks = stats.filter(s => s.type === 'BOOKING_CLICK');
+    const quotationsByHotel = {};
+    const clicksByHotel = {};
+    const quotationsByChannel = {};
+    for (const q of quotationsCreated) {
+      const hotel = q.property || 'Unknown';
+      const ch = q.channel || 'web';
+      quotationsByHotel[hotel] = (quotationsByHotel[hotel] || 0) + 1;
+      quotationsByChannel[ch] = (quotationsByChannel[ch] || 0) + 1;
+    }
+    for (const c of bookingClicks) {
+      const hotel = c.property || 'Unknown';
+      clicksByHotel[hotel] = (clicksByHotel[hotel] || 0) + 1;
+    }
+
     res.json({
       funnel: { sessions: uniqueSessions, offers_made: offersMade, offers_clicked: offersClicked, emails_sent: emailsSent },
+      quotation_funnel: {
+        quotations_created: quotationsCreated.length,
+        booking_clicks: bookingClicks.length,
+        conversion_rate: quotationsCreated.length > 0 ? ((bookingClicks.length / quotationsCreated.length) * 100).toFixed(1) : '0.0',
+        by_hotel: quotationsByHotel,
+        clicks_by_hotel: clicksByHotel,
+        by_channel: quotationsByChannel,
+      },
       top_questions: topQuestions,
       busiest_hours: busiestHours,
       languages,
@@ -622,6 +647,122 @@ router.get('/api/admin/analytics', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error getting analytics:', error);
     res.status(500).json({ error: 'Failed to get analytics' });
+  }
+});
+
+// =====================================================
+// IMPACT DASHBOARD
+// =====================================================
+
+router.get('/api/admin/impact', requireAuth, async (req, res) => {
+  try {
+    let stats = await readEncryptedJsonFileAsync(STATS_FILE, []);
+    const archiveFiles = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('stats-archive-'));
+    for (const af of archiveFiles) {
+      const archived = await readEncryptedJsonFileAsync(path.join(DATA_DIR, af), []);
+      stats = [...archived, ...stats];
+    }
+    const logs = await readEncryptedJsonFileAsync(ADMIN_LOGS_FILE, []);
+    const phoneCalls = await loadPhoneCallsAsync();
+
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Rome' });
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Total conversations
+    const totalConversations = logs.length;
+    const last30d = logs.filter(l => { try { return new Date(l.timestamp) >= thirtyDaysAgo; } catch (_) { return false; } });
+    const today = logs.filter(l => { try { return l.timestamp?.startsWith(todayStr); } catch (_) { return false; } });
+
+    // By channel
+    const byChannel = { web: 0, whatsapp: 0, phone: 0 };
+    for (const log of logs) {
+      const ch = log.channel || 'web';
+      if (byChannel[ch] !== undefined) byChannel[ch]++;
+      else byChannel[ch] = 1;
+    }
+    byChannel.phone += phoneCalls.length;
+
+    // Languages
+    const langCounts = {};
+    const detectLang = (text) => {
+      if (!text) return 'EN';
+      const l = text.toLowerCase();
+      if (l.match(/\b(il|della|sono|grazie|buon|vorrei|quanto|posso|potrei)\b/)) return 'IT';
+      if (l.match(/\b(le|je|suis|merci|bonjour|combien|pourr)\b/)) return 'FR';
+      if (l.match(/\b(el|hola|gracias|cuanto|quiero|puedo)\b/)) return 'ES';
+      if (l.match(/\b(der|die|das|danke|guten|könnt|bitte)\b/)) return 'DE';
+      return 'EN';
+    };
+    for (const log of logs) {
+      const lang = detectLang(log.userMessage);
+      langCounts[lang] = (langCounts[lang] || 0) + 1;
+    }
+
+    // Quotation funnel
+    const quotationsCreated = stats.filter(s => s.type === 'QUOTATION_CREATED').length;
+    const bookingClicks = stats.filter(s => s.type === 'BOOKING_CLICK').length;
+    const conversionRate = quotationsCreated > 0 ? ((bookingClicks / quotationsCreated) * 100).toFixed(1) : '0.0';
+
+    // Hotels served
+    const hotelsServed = 6;
+
+    // Daily activity (last 30 days)
+    const dailyActivity = {};
+    for (const log of last30d) {
+      try {
+        const key = log.timestamp.split('T')[0];
+        dailyActivity[key] = (dailyActivity[key] || 0) + 1;
+      } catch (_) {}
+    }
+
+    // Top 5 questions
+    const categories = {
+      'Booking/Prices': ['price', 'book', 'room', 'availab', 'cost', 'prez', 'preno', 'camera', 'tariffa'],
+      'Check-in/Out': ['check-in', 'check-out', 'arrivo', 'partenza', 'bagag', 'luggage'],
+      'Directions': ['where', 'how to get', 'address', 'direction', 'dove', 'arriva'],
+      'Tours/Activities': ['tour', 'excursion', 'cooking', 'wine', 'museum', 'activity'],
+      'Recommendations': ['restaurant', 'ristoran', 'museo', 'visit', 'thing to do'],
+    };
+    const questionCounts = {};
+    Object.keys(categories).forEach(cat => { questionCounts[cat] = 0; });
+    for (const log of logs) {
+      const msg = (log.userMessage || '').toLowerCase();
+      for (const [cat, keywords] of Object.entries(categories)) {
+        if (keywords.some(kw => msg.includes(kw))) questionCounts[cat]++;
+      }
+    }
+    const topQuestions = Object.entries(questionCounts)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Scheduled messages stats
+    const schedulerFile = path.join(DATA_DIR, 'scheduled_messages.json');
+    let scheduledMessages = [];
+    try { scheduledMessages = await readEncryptedJsonFileAsync(schedulerFile, []); } catch (_) {}
+    const sentMessages = scheduledMessages.filter(m => m.status === 'sent').length;
+    const failedMessages = scheduledMessages.filter(m => m.status === 'failed').length;
+
+    res.json({
+      total_conversations: totalConversations,
+      conversations_30d: last30d.length,
+      conversations_today: today.length,
+      by_channel: byChannel,
+      languages_served: Object.keys(langCounts).length,
+      languages: langCounts,
+      quotations_created: quotationsCreated,
+      booking_clicks: bookingClicks,
+      conversion_rate: conversionRate,
+      hotels_served: hotelsServed,
+      phone_calls: phoneCalls.length,
+      top_questions: topQuestions,
+      daily_activity: dailyActivity,
+      scheduled_messages: { sent: sentMessages, failed: failedMessages, total: scheduledMessages.length },
+    });
+  } catch (error) {
+    console.error('Error getting impact data:', error);
+    res.status(500).json({ error: 'Failed to get impact data' });
   }
 });
 

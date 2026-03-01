@@ -3,13 +3,28 @@
 import {
   HOTEL_PORTFOLIO,
   PENDING_KNOWLEDGE_FILE,
+  STATS_FILE,
   phoneCallContexts,
   whatsappLastIncoming,
   healthMetrics,
   bookingTrackingMap,
   BASE_URL,
 } from '../lib/config.js';
-import { readJsonFileAsync, writeJsonFileAsync } from '../lib/encryption.js';
+import { readJsonFileAsync, writeJsonFileAsync, readEncryptedJsonFileAsync, writeEncryptedJsonFileAsync, withFileLock } from '../lib/encryption.js';
+
+/** Persist a stats event to the encrypted stats file */
+async function saveStatsEvent(event) {
+  try {
+    await withFileLock(STATS_FILE, async () => {
+      const stats = await readEncryptedJsonFileAsync(STATS_FILE, []);
+      stats.push({ ...event, timestamp: new Date().toISOString() });
+      if (stats.length > 5000) stats.splice(0, stats.length - 5000);
+      await writeEncryptedJsonFileAsync(STATS_FILE, stats);
+    });
+  } catch (e) {
+    console.error('[STATS] Failed to save event:', e.message);
+  }
+}
 import { detectLanguage, detectLanguageFromPhone } from '../lib/language.js';
 import { sendWhatsAppTemplate, sendWhatsAppFlow } from './whatsapp.js';
 import { scheduleMessage, cancelByPhoneAndType } from './scheduler.js';
@@ -32,7 +47,7 @@ import {
 import { fetchPartnerTours } from './bokun.js';
 import { getGuestProfileAsync, saveGuestProfileAsync, getGuestProfileByName, getGuestProfileByNameAsync } from './guests.js';
 
-async function executeToolCall(name, args, generatedAttachments, chatSession) {
+async function executeToolCall(name, args, generatedAttachments, chatSession, channel = 'web') {
   console.log('[TOOL] Executing:', name, JSON.stringify(args).substring(0, 200));
   const startMs = Date.now();
   let hadError = false;
@@ -141,6 +156,13 @@ async function executeToolCall(name, args, generatedAttachments, chatSession) {
       }
       if (quotationResult.success) {
         healthMetrics.quotationsCreated++;
+        // Persist quotation event for revenue attribution
+        saveStatsEvent({
+          type: 'QUOTATION_CREATED',
+          property: args.hotel_name || quotationResult.hotel_name,
+          channel,
+          metadata: { guestEmail: args.guest_email, guestName: args.guest_name }
+        }).catch(() => {});
         // Wrap booking link with tracking URL
         if (quotationResult.booking_link) {
           const trackingId = `trk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -328,7 +350,7 @@ async function executeToolCall(name, args, generatedAttachments, chatSession) {
     }
     case 'send_whatsapp_message': {
       let phoneNumber = (args.phone_number || '').replace(/[^0-9+]/g, '').replace(/^\+/, '');
-      // Handle SIP URIs (e.g. sip:number@host)
+      // Handle SIP URIs (e.g. sip:393313165783@91.98.45.18)
       if (args.phone_number && args.phone_number.includes('@')) {
         phoneNumber = args.phone_number.replace(/^sip:/, '').split('@')[0].replace(/[^0-9]/g, '');
       }

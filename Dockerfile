@@ -12,6 +12,7 @@ COPY index.html embed.html vite.config.ts tsconfig*.json tailwind.config.* postc
 COPY index.tsx index.css App.tsx embed.tsx types.ts constants.ts ./
 COPY components/ components/
 COPY services/ services/
+COPY assets/ assets/
 COPY public/ public/
 
 # Build frontend
@@ -46,6 +47,11 @@ RUN mkdir -p data sofia_data && \
     echo '[]' > data/knowledge_base.json && \
     echo '[]' > data/admin_activity.json && \
     echo '[]' > data/admin_audit.json
+
+# Run as non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN chown -R appuser:appgroup /app
+USER appuser
 
 # Cloud Run sets PORT=8080 by default
 ENV PORT=8080

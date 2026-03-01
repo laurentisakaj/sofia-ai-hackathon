@@ -95,6 +95,7 @@ import { startScheduler, schedulePreArrivalMessages, schedulePostCheckoutMessage
 // ---------------------------------------------------------------------------
 
 const app = express();
+app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 // Request logging (mask sensitive query params)
@@ -131,10 +132,18 @@ app.use(cookieParser(FINAL_COOKIE_SECRET));
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://widgets.bokun.io https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.hotelincloud.com https://*.googleusercontent.com https://*.gstatic.com https://*.googleapis.com https://*.ggpht.com; connect-src 'self' wss: https:; frame-ancestors 'self' https://*.ognissantihotels.com https://*.palazzinafusi.com https://*.hotellombardiafirenze.com https://*.hotelarcadiaflorence.com https://*.hotelvillabetania.it https://*.anticaporta.it https://*.residenzaognissanti.com;");
+  res.setHeader('Permissions-Policy', 'payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://widgets.bokun.io https://maps.googleapis.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://*.hotelincloud.com https://*.googleusercontent.com https://*.gstatic.com https://*.googleapis.com https://*.ggpht.com",
+    "connect-src 'self' wss://ai.ognissantihotels.com https://ai.ognissantihotels.com https://*.googleapis.com https://widgets.bokun.io https://open-meteo.com https://api.open-meteo.com",
+    "frame-ancestors 'self' https://*.ognissantihotels.com https://*.palazzinafusi.com https://*.hotellombardiafirenze.com https://*.hotelarcadiaflorence.com https://*.hotelvillabetania.it https://*.anticaporta.it https://*.residenzaognissanti.com",
+  ].join('; '));
   next();
 });
 

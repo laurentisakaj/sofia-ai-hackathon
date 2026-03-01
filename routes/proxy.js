@@ -30,12 +30,14 @@ import {
   HOTEL_PHONES,
   callAnomalyTracker,
   PHONE_CALLS_FILE,
+  STATS_FILE,
   bookingTrackingMap,
 } from '../lib/config.js';
 import { rateLimit } from '../lib/auth.js';
 import {
   readEncryptedJsonFileAsync,
   writeEncryptedJsonFileAsync,
+  withFileLock,
 } from '../lib/encryption.js';
 import {
   verifyPhoneWebhook,
@@ -93,12 +95,12 @@ router.post('/proxy/routes', proxyRateLimiter, async (req, res) => {
   const apiKey = process.env.VITE_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     console.error("Proxy Error: Missing VITE_GOOGLE_MAPS_API_KEY");
-    console.log("Available Env Keys:", Object.keys(process.env).filter(k => k.includes('API')));
     return res.status(500).json({ error: { message: "Server configuration error: Missing Maps API Key" } });
   }
 
   try {
     console.log("Proxy: Forwarding to Google Routes API...");
+    const { origin, destination, travelMode, routingPreference, languageCode, units } = req.body;
     const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
       headers: {
@@ -107,7 +109,7 @@ router.post('/proxy/routes', proxyRateLimiter, async (req, res) => {
         'X-Goog-FieldMask': req.headers['x-goog-fieldmask'] || 'routes.duration,routes.distanceMeters,routes.legs.steps',
         'Referer': GOOGLE_API_REFERER
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify({ origin, destination, travelMode, routingPreference, languageCode, units })
     });
 
     const data = await response.json();
@@ -140,6 +142,7 @@ router.post('/proxy/places', proxyRateLimiter, async (req, res) => {
     // Force the correct FieldMask to prevent client-side caching issues with deprecated fields
     const fieldMask = 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.priceLevel,places.regularOpeningHours';
 
+    const { textQuery, locationBias, maxResultCount, languageCode: placesLang } = req.body;
     const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
@@ -148,7 +151,7 @@ router.post('/proxy/places', proxyRateLimiter, async (req, res) => {
         'X-Goog-FieldMask': fieldMask,
         'Referer': GOOGLE_API_REFERER
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify({ textQuery, locationBias, maxResultCount, languageCode: placesLang })
     });
 
     const data = await response.json();
@@ -543,6 +546,19 @@ router.get('/api/track/booking/:trackingId', (req, res) => {
   }
 
   console.log(`[BOOKING CLICK] ${trackingId} → ${tracking.hotelName}`);
+  // Persist booking click event for revenue attribution
+  withFileLock(STATS_FILE, async () => {
+    const stats = await readEncryptedJsonFileAsync(STATS_FILE, []);
+    stats.push({
+      type: 'BOOKING_CLICK',
+      property: tracking.hotelName,
+      channel: 'tracking',
+      metadata: { trackingId, guestEmail: tracking.guestEmail },
+      timestamp: new Date().toISOString()
+    });
+    if (stats.length > 5000) stats.splice(0, stats.length - 5000);
+    await writeEncryptedJsonFileAsync(STATS_FILE, stats);
+  }).catch(e => console.error('[STATS] Booking click save error:', e.message));
   // Validate redirect URL to prevent open redirect
   const allowedHosts = ['app.hotelincloud.com', 'booking.hotelincloud.com'];
   try {

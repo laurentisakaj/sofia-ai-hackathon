@@ -497,7 +497,7 @@ export async function handleVoiceConnection(ws, req) {
             const toolResults = await Promise.all(functionCalls.map(async (call) => {
               const voiceAttachments = [];
               let result = await Promise.race([
-                executeToolCall(call.name, call.args, voiceAttachments, null),
+                executeToolCall(call.name, call.args, voiceAttachments, null, 'voice'),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
               ]).catch(err => ({ error: err.message }));
 
@@ -508,7 +508,7 @@ export async function handleVoiceConnection(ws, req) {
                 await new Promise(r => setTimeout(r, 2000));
                 voiceAttachments.length = 0;
                 result = await Promise.race([
-                  executeToolCall(call.name, call.args, voiceAttachments, null),
+                  executeToolCall(call.name, call.args, voiceAttachments, null, 'voice'),
                   new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
                 ]).catch(err => ({ error: err.message }));
               }

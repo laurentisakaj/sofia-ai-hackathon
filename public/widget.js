@@ -359,41 +359,82 @@
     // Create menu
     const menu = document.createElement('div');
     menu.id = 'sofia-options-menu';
-    menu.innerHTML = `
-      <div class="sofia-header">Siamo sempre Disponibili!</div>
-      
-      <div class="sofia-link sofia-ai-link" id="sofia-ai-trigger">
-        <svg class="sofia-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2Z" fill="#A3826C"/>
-          <path d="M12 6C9.79 6 8 7.79 8 10C8 11.48 8.83 12.77 10.05 13.4L9.5 16.5L12 15L14.5 16.5L13.95 13.4C15.17 12.77 16 11.48 16 10C16 7.79 14.21 6 12 6Z" fill="white"/>
-          <circle cx="10.5" cy="9.5" r="1" fill="#A3826C"/>
-          <circle cx="13.5" cy="9.5" r="1" fill="#A3826C"/>
-        </svg>
-        Sofia AI
-        <span class="sofia-ai-badge">✨ AI</span>
-      </div>
-      
-      <a href="${config.whatsapp}" target="_blank" class="sofia-link">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" class="sofia-icon" alt="WhatsApp">
-        WhatsApp
-      </a>
+    // Build menu with createElement (avoid innerHTML for security)
+    var header = document.createElement('div');
+    header.className = 'sofia-header';
+    header.textContent = 'Siamo sempre Disponibili!';
+    menu.appendChild(header);
 
-      ${config.phone ? `
-      <a href="tel:${config.phone}" class="sofia-link">
-        <span class="sofia-icon sofia-phone-ring" style="display:flex;align-items:center;justify-content:center;">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </span>
-        Chiamaci
-      </a>
-      ` : ''}
+    var aiLink = document.createElement('div');
+    aiLink.className = 'sofia-link sofia-ai-link';
+    aiLink.id = 'sofia-ai-trigger';
+    var aiSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    aiSvg.setAttribute('class', 'sofia-icon');
+    aiSvg.setAttribute('viewBox', '0 0 24 24');
+    aiSvg.setAttribute('fill', 'none');
+    var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p1.setAttribute('d', 'M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2Z');
+    p1.setAttribute('fill', '#A3826C');
+    var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p2.setAttribute('d', 'M12 6C9.79 6 8 7.79 8 10C8 11.48 8.83 12.77 10.05 13.4L9.5 16.5L12 15L14.5 16.5L13.95 13.4C15.17 12.77 16 11.48 16 10C16 7.79 14.21 6 12 6Z');
+    p2.setAttribute('fill', 'white');
+    var c1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c1.setAttribute('cx', '10.5'); c1.setAttribute('cy', '9.5'); c1.setAttribute('r', '1'); c1.setAttribute('fill', '#A3826C');
+    var c2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c2.setAttribute('cx', '13.5'); c2.setAttribute('cy', '9.5'); c2.setAttribute('r', '1'); c2.setAttribute('fill', '#A3826C');
+    aiSvg.appendChild(p1); aiSvg.appendChild(p2); aiSvg.appendChild(c1); aiSvg.appendChild(c2);
+    aiLink.appendChild(aiSvg);
+    aiLink.appendChild(document.createTextNode(' Sofia AI '));
+    var aiBadge = document.createElement('span');
+    aiBadge.className = 'sofia-ai-badge';
+    aiBadge.textContent = '\u2728 AI';
+    aiLink.appendChild(aiBadge);
+    menu.appendChild(aiLink);
 
-      ${config.sms ? `
-      <a href="${config.sms}" class="sofia-link">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/IMessage_logo.svg" class="sofia-icon" alt="Message">
-        Messaggi
-      </a>
-      ` : ''}
-    `;
+    var waLink = document.createElement('a');
+    waLink.href = config.whatsapp;
+    waLink.target = '_blank';
+    waLink.className = 'sofia-link';
+    var waImg = document.createElement('img');
+    waImg.src = 'https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg';
+    waImg.className = 'sofia-icon';
+    waImg.alt = 'WhatsApp';
+    waLink.appendChild(waImg);
+    waLink.appendChild(document.createTextNode(' WhatsApp'));
+    menu.appendChild(waLink);
+
+    if (config.phone) {
+      var phoneLink = document.createElement('a');
+      phoneLink.href = 'tel:' + config.phone;
+      phoneLink.className = 'sofia-link';
+      var phoneSpan = document.createElement('span');
+      phoneSpan.className = 'sofia-icon sofia-phone-ring';
+      phoneSpan.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+      var phoneSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      phoneSvg.setAttribute('viewBox', '0 0 24 24'); phoneSvg.setAttribute('width', '22'); phoneSvg.setAttribute('height', '22');
+      phoneSvg.setAttribute('fill', 'none'); phoneSvg.setAttribute('stroke', '#2563eb');
+      phoneSvg.setAttribute('stroke-width', '2'); phoneSvg.setAttribute('stroke-linecap', 'round'); phoneSvg.setAttribute('stroke-linejoin', 'round');
+      var phonePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      phonePath.setAttribute('d', 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z');
+      phoneSvg.appendChild(phonePath);
+      phoneSpan.appendChild(phoneSvg);
+      phoneLink.appendChild(phoneSpan);
+      phoneLink.appendChild(document.createTextNode(' Chiamaci'));
+      menu.appendChild(phoneLink);
+    }
+
+    if (config.sms) {
+      var smsLink = document.createElement('a');
+      smsLink.href = config.sms;
+      smsLink.className = 'sofia-link';
+      var smsImg = document.createElement('img');
+      smsImg.src = 'https://upload.wikimedia.org/wikipedia/commons/5/51/IMessage_logo.svg';
+      smsImg.className = 'sofia-icon';
+      smsImg.alt = 'Message';
+      smsLink.appendChild(smsImg);
+      smsLink.appendChild(document.createTextNode(' Messaggi'));
+      menu.appendChild(smsLink);
+    }
 
     // Create trigger button
     const button = document.createElement('div');
@@ -407,7 +448,11 @@
     if (config.whatsapp) embedParams.set('wa', config.whatsapp);
     if (config.brandColor) embedParams.set('brand', config.brandColor);
     const embedQuery = embedParams.toString() ? `?${embedParams.toString()}` : '';
-    chatFrame.innerHTML = `<iframe src="${config.baseUrl}/embed.html${embedQuery}" allow="geolocation" title="Sofia AI Chat"></iframe>`;
+    const iframe = document.createElement('iframe');
+    iframe.src = config.baseUrl + '/embed.html' + embedQuery;
+    iframe.setAttribute('allow', 'geolocation');
+    iframe.title = 'Sofia AI Chat';
+    chatFrame.appendChild(iframe);
 
     // Assemble
     container.appendChild(menu);

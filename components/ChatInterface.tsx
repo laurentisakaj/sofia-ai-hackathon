@@ -321,6 +321,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
         attachments: geminiResponse.attachments
       };
 
+      // Extract guest data from attachments for cross-channel memory
+      for (const att of (geminiResponse.attachments || [])) {
+        if (att.type === 'reservation' && att.payload) {
+          if (att.payload.guest_email) localStorage.setItem('ognissanti_guest_email', att.payload.guest_email);
+          if (att.payload.guest_phone) localStorage.setItem('ognissanti_guest_phone', att.payload.guest_phone);
+          if (att.payload.guest_name) localStorage.setItem('ognissanti_guest_name', att.payload.guest_name);
+        }
+        if (att.type === 'quotation' && att.payload) {
+          if (att.payload.guest_email) localStorage.setItem('ognissanti_guest_email', att.payload.guest_email);
+          if (att.payload.guest_name) localStorage.setItem('ognissanti_guest_name', att.payload.guest_name);
+        }
+      }
+
       setState(prev => ({
         ...prev,
         messages: [...prev.messages, botMessage],

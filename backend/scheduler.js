@@ -198,7 +198,7 @@ async function schedulePreArrivalMessages(index) {
   // Build set of existing scheduled reminders for dedup: "phone|checkIn|type"
   const existingKeys = new Set();
   for (const msg of messages) {
-    if (msg.status === 'pending' && (msg.type === 'checkin_reminder_3d' || msg.type === 'checkin_reminder_1d')) {
+    if (msg.status === 'pending' && (msg.type === 'checkin_reminder_3d' || msg.type === 'checkin_reminder_1d' || msg.type === 'pre_arrival_concierge')) {
       existingKeys.add(`${msg.guestPhone}|${msg.metadata?.checkIn}|${msg.type}`);
     }
   }
@@ -258,6 +258,27 @@ async function schedulePreArrivalMessages(index) {
           languageCode: lang,
           parameters: [entry.guestName.split(' ')[0], entry.hotelName, entry.checkIn],
           scheduledAt: reminderDate.toISOString(),
+          metadata: { checkIn: entry.checkIn, bookingCode: entry.bookingCode }
+        });
+        scheduled++;
+      }
+    }
+
+    // 2-day pre-arrival concierge: ask about transfers/restaurants (14:00 Rome time)
+    if (daysUntil >= 2 && daysUntil <= 5) {
+      const conciergeDate = new Date(checkInDate.getTime() - 2 * 24 * 60 * 60 * 1000);
+      conciergeDate.setHours(14, 0, 0, 0); // 2 PM
+      const key = `${phone}|${entry.checkIn}|pre_arrival_concierge`;
+      if (!existingKeys.has(key) && conciergeDate > now) {
+        await scheduleMessage({
+          type: 'pre_arrival_concierge',
+          guestPhone: phone,
+          guestName: entry.guestName,
+          hotelName: entry.hotelName,
+          templateName: 'pre_arrival_services',
+          languageCode: lang,
+          parameters: [entry.guestName.split(' ')[0], entry.hotelName],
+          scheduledAt: conciergeDate.toISOString(),
           metadata: { checkIn: entry.checkIn, bookingCode: entry.bookingCode }
         });
         scheduled++;

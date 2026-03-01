@@ -28,6 +28,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     const [showVideoMenu, setShowVideoMenu] = useState(false);
     const [speechSpeed, setSpeechSpeed] = useState<'normal' | 'slow' | 'fast'>('normal');
     const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
+    const [needsGesture, setNeedsGesture] = useState(false);
 
     // Auto-reconnect tracking
     const reconnectAttemptsRef = useRef(0);
@@ -99,8 +100,25 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
             }
 
-            await inputAudioContextRef.current.resume();
-            await outputAudioContextRef.current.resume();
+            // Safari: resume() is a no-op outside user gesture — AudioContext stays suspended.
+            // Use a 2s race so we don't hang forever, and also check state after resolve.
+            const resumeWithTimeout = (ctx: AudioContext) =>
+                Promise.race([
+                    ctx.resume().then(() => {
+                        if (ctx.state !== 'running') throw new Error('suspended');
+                    }),
+                    new Promise<void>((_, reject) => setTimeout(() => reject(new Error('suspended')), 2000)),
+                ]);
+
+            try {
+                await resumeWithTimeout(inputAudioContextRef.current);
+                await resumeWithTimeout(outputAudioContextRef.current);
+            } catch {
+                // AudioContext stayed suspended (Safari without user gesture) — show tap overlay
+                setNeedsGesture(true);
+                setStatus('Tap to start');
+                return;
+            }
 
             // Request mic IMMEDIATELY in the user gesture chain — before any async fetch.
             // Mobile browsers require getUserMedia within a user activation context.
@@ -147,6 +165,14 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
+            // Pre-acquire camera stream in parallel with WebSocket handshake (no waiting)
+            let preAcquiredCameraStream: MediaStream | null = null;
+            if (autoStartCamera) {
+                navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
+                    .then(s => { preAcquiredCameraStream = s; })
+                    .catch(() => {}); // camera optional — ignore errors
+            }
+
             ws.onopen = () => {
                 setStatus('Listening...');
                 reconnectAttemptsRef.current = 0;
@@ -155,9 +181,20 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 if (userLocation) {
                     ws.send(JSON.stringify({ type: 'location', lat: userLocation.lat, lng: userLocation.lng }));
                 }
-                // Auto-start camera if requested (video mode)
+                // Auto-start camera — use pre-acquired stream or start fresh
                 if (autoStartCamera) {
-                    setTimeout(() => startVideoCapture('camera'), 500);
+                    if (preAcquiredCameraStream) {
+                        applyVideoStream(preAcquiredCameraStream, 'camera');
+                    } else {
+                        // Stream not ready yet — wait briefly then check or fall back
+                        setTimeout(() => {
+                            if (preAcquiredCameraStream) {
+                                applyVideoStream(preAcquiredCameraStream, 'camera');
+                            } else {
+                                startVideoCapture('camera');
+                            }
+                        }, 200);
+                    }
                 }
             };
 
@@ -326,6 +363,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
         stopRecording();
         stopVideoCapture();
         setIsStarted(false);
+        setNeedsGesture(false);
         if (wsRef.current) wsRef.current.close();
         if (inputAudioContextRef.current) inputAudioContextRef.current.close().catch(() => { });
         if (outputAudioContextRef.current) outputAudioContextRef.current.close().catch(() => { });
@@ -494,6 +532,22 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
         }
     }, [stopVideoCapture, cameraFacing, setupVideoCapture, startRecording]);
 
+    // Apply an already-acquired camera stream (skips getUserMedia for faster startup)
+    const applyVideoStream = useCallback((stream: MediaStream, mode: 'camera' | 'screen') => {
+        if (videoIntervalRef.current) { clearInterval(videoIntervalRef.current); videoIntervalRef.current = null; }
+        if (videoStreamRef.current) { videoStreamRef.current.getTracks().forEach(t => t.stop()); }
+        videoStreamRef.current = stream;
+        setVideoMode(mode);
+        const video = videoElementRef.current;
+        if (video) setupVideoCapture(video, stream);
+        if (previewVideoRef.current) { previewVideoRef.current.srcObject = stream; previewVideoRef.current.play().catch(() => {}); }
+        // Check mic didn't die
+        if (mediaStreamRef.current) {
+            const audioTrack = mediaStreamRef.current.getAudioTracks()[0];
+            if (!audioTrack || audioTrack.readyState === 'ended') startRecording();
+        }
+    }, [setupVideoCapture, startRecording]);
+
     const flipCamera = useCallback(async () => {
         const newFacing = cameraFacing === 'user' ? 'environment' : 'user';
         setCameraFacing(newFacing);
@@ -649,6 +703,17 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 </p>
 
                 <div className="flex items-center gap-3">
+                    {needsGesture && (
+                        <button onClick={() => {
+                            setNeedsGesture(false);
+                            // Close suspended contexts so initConnection creates fresh ones in gesture context
+                            if (inputAudioContextRef.current) { inputAudioContextRef.current.close().catch(() => {}); inputAudioContextRef.current = null; }
+                            if (outputAudioContextRef.current) { outputAudioContextRef.current.close().catch(() => {}); outputAudioContextRef.current = null; }
+                            initConnection();
+                        }} className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-full transition-colors flex items-center gap-2 font-semibold text-sm active:scale-95 animate-pulse">
+                            <Mic size={16} /> Tap to start
+                        </button>
+                    )}
                     {error && !cam && (
                         <button onClick={initConnection} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-full transition-colors flex items-center gap-1.5 font-semibold text-sm active:scale-95">
                             <Mic size={14} /> Retry

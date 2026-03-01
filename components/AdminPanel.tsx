@@ -8,7 +8,121 @@ interface AdminPanelProps {
 }
 
 type AuthStep = 'login' | '2fa_verify' | '2fa_setup' | 'forgot_password' | 'reset_password';
-type AdminTab = 'knowledge' | 'logs' | 'learning' | 'suggestions' | 'team' | 'settings' | 'stats' | 'pending' | 'analytics' | 'phone' | 'health';
+type AdminTab = 'knowledge' | 'logs' | 'learning' | 'suggestions' | 'team' | 'settings' | 'stats' | 'pending' | 'analytics' | 'phone' | 'health' | 'impact';
+
+// --- Impact Dashboard Component ---
+const ImpactDashboard: React.FC = () => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/impact', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="flex-1 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>;
+  if (!data) return <div className="flex-1 flex items-center justify-center text-slate-500">Failed to load impact data</div>;
+
+  const MetricCard = ({ label, value, sub, color = 'emerald' }: { label: string; value: string | number; sub?: string; color?: string }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-center">
+      <div className={`text-3xl md:text-4xl font-bold text-${color}-600 mb-1`}>{value}</div>
+      <div className="text-sm font-medium text-slate-700">{label}</div>
+      {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
+    </div>
+  );
+
+  const channelColors: Record<string, string> = { web: '#10b981', whatsapp: '#25d366', phone: '#3b82f6' };
+  const totalByChannel = (data.by_channel?.web || 0) + (data.by_channel?.whatsapp || 0) + (data.by_channel?.phone || 0);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto space-y-6">
+      <div className="text-center mb-2">
+        <h2 className="text-2xl font-bold text-slate-800">Sofia AI Impact</h2>
+        <p className="text-sm text-slate-500">Real-time metrics across all channels</p>
+      </div>
+
+      {/* Key metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard label="Conversations" value={data.total_conversations?.toLocaleString() || '0'} sub={`${data.conversations_today || 0} today`} />
+        <MetricCard label="Languages" value={data.languages_served || 0} sub={Object.keys(data.languages || {}).join(', ')} />
+        <MetricCard label="Quotations" value={data.quotations_created || 0} sub={`${data.booking_clicks || 0} clicks`} color="blue" />
+        <MetricCard label="Click Rate" value={`${data.conversion_rate || 0}%`} sub="quotation to click" color="amber" />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard label="Hotels Powered" value={data.hotels_served || 6} />
+        <MetricCard label="Phone Calls" value={data.phone_calls || 0} />
+        <MetricCard label="Last 30 Days" value={data.conversations_30d?.toLocaleString() || '0'} sub="conversations" />
+        <MetricCard label="Scheduled Msgs" value={data.scheduled_messages?.sent || 0} sub={`${data.scheduled_messages?.total || 0} total`} />
+      </div>
+
+      {/* Channel breakdown */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">Channel Breakdown</h3>
+        <div className="flex gap-3">
+          {Object.entries(data.by_channel || {}).map(([ch, count]) => {
+            const pct = totalByChannel > 0 ? ((count as number) / totalByChannel * 100).toFixed(0) : '0';
+            return (
+              <div key={ch} className="flex-1 text-center">
+                <div className="h-24 bg-slate-50 rounded-lg relative overflow-hidden mb-2">
+                  <div className="absolute bottom-0 left-0 right-0 rounded-b-lg transition-all" style={{ height: `${pct}%`, backgroundColor: channelColors[ch] || '#94a3b8' }} />
+                </div>
+                <div className="text-lg font-bold text-slate-800">{(count as number).toLocaleString()}</div>
+                <div className="text-xs text-slate-500 capitalize">{ch}</div>
+                <div className="text-xs text-slate-400">{pct}%</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Top questions */}
+      {data.top_questions && data.top_questions.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Top Question Categories</h3>
+          <div className="space-y-2">
+            {data.top_questions.map((q: any) => {
+              const maxCount = data.top_questions[0].count || 1;
+              return (
+                <div key={q.category} className="flex items-center gap-3">
+                  <div className="w-28 text-xs text-slate-600 font-medium truncate">{q.category}</div>
+                  <div className="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(q.count / maxCount) * 100}%` }} />
+                  </div>
+                  <div className="w-10 text-xs text-slate-500 text-right">{q.count}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Daily activity */}
+      {data.daily_activity && Object.keys(data.daily_activity).length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Daily Activity (Last 30 Days)</h3>
+          <div className="flex items-end gap-1 h-24">
+            {Object.entries(data.daily_activity).sort().slice(-30).map(([date, count]) => {
+              const maxDay = Math.max(...Object.values(data.daily_activity as Record<string, number>).map(Number));
+              const pct = maxDay > 0 ? ((count as number) / maxDay) * 100 : 0;
+              return (
+                <div key={date} className="flex-1 min-w-[4px]" title={`${date}: ${count}`}>
+                  <div className="bg-emerald-500 rounded-t" style={{ height: `${Math.max(pct, 4)}%` }} />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-slate-400">{Object.keys(data.daily_activity).sort()[0]}</span>
+            <span className="text-[10px] text-slate-400">{Object.keys(data.daily_activity).sort().pop()}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -706,6 +820,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         {/* Tabs - scrollable on mobile */}
         <div className="mt-3 -mx-4 md:mx-0 px-4 md:px-0 overflow-x-auto scrollbar-hide">
           <div className="flex gap-1 bg-emerald-800/50 p-1 rounded-lg min-w-max md:min-w-0 md:flex-wrap md:justify-center">
+            <button
+              onClick={() => setActiveTab('impact')}
+              className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'impact' ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-100 hover:text-white'}`}
+            >
+              Impact
+            </button>
             <button
               onClick={() => setActiveTab('stats')}
               className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'stats' ? 'bg-white text-emerald-900 shadow-sm' : 'text-emerald-100 hover:text-white'}`}
@@ -1533,6 +1653,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         )}
 
         {/* STATS TAB */}
+        {activeTab === 'impact' && (
+          <ImpactDashboard />
+        )}
+
         {activeTab === 'stats' && !stats && (
           <div className="flex-1 flex items-center justify-center p-4 md:p-6">
             <div className="text-center space-y-4 max-w-md">

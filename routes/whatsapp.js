@@ -34,7 +34,7 @@ import { detectLanguage, detectLanguageFromPhone } from '../lib/language.js';
 import { sanitizeForLogging, sanitizeName } from '../lib/helpers.js';
 import { buildSystemInstruction, geminiToolDeclarations } from '../backend/gemini.js';
 import { executeToolCall } from '../backend/tools.js';
-import { getGuestProfile, saveGuestProfileAsync, getGuestProfileByNameAsync } from '../backend/guests.js';
+import { getGuestProfile, saveGuestProfileAsync, getGuestProfileByNameAsync, getGuestProfileByPhoneAsync } from '../backend/guests.js';
 import { sendGuestMessage, sendWhatsAppInteractive, buildQuickReplyButtons, fetchWithRetry } from '../backend/whatsapp.js';
 import { lookupPhoneInIndex } from '../backend/hotelincloud.js';
 import fs from 'fs';
@@ -205,7 +205,9 @@ router.post('/webhook', async (req, res) => {
         });
         const mediaData = await mediaResp.json();
         // Validate media URL points to Meta's CDN (SSRF protection)
-        if (!mediaData.url || !new URL(mediaData.url).hostname.endsWith('.fbcdn.net')) {
+        // Meta uses both fbcdn.net (CDN) and fbsbx.com (direct attachments)
+        const audioHost = new URL(mediaData.url).hostname;
+        if (!mediaData.url || (!audioHost.endsWith('.fbcdn.net') && !audioHost.endsWith('.fbsbx.com'))) {
           throw new Error(`Unexpected media URL host: ${mediaData.url}`);
         }
         const audioResp = await fetch(mediaData.url, {
@@ -243,7 +245,9 @@ router.post('/webhook', async (req, res) => {
         });
         const mediaData = await mediaResp.json();
         // Validate media URL points to Meta's CDN (SSRF protection)
-        if (!mediaData.url || !new URL(mediaData.url).hostname.endsWith('.fbcdn.net')) {
+        // Meta uses both fbcdn.net (CDN) and fbsbx.com (direct attachments)
+        const imgHost = new URL(mediaData.url).hostname;
+        if (!mediaData.url || (!imgHost.endsWith('.fbcdn.net') && !imgHost.endsWith('.fbsbx.com'))) {
           throw new Error(`Unexpected media URL host: ${mediaData.url}`);
         }
         const imgResp = await fetch(mediaData.url, {
@@ -333,18 +337,29 @@ router.post('/webhook', async (req, res) => {
     }
     console.log(`[WHATSAPP] Message from ${from.substring(0, 4)}*** (${contactName}): ${incomingText.substring(0, 100)}`);
 
-    // Phone index lookup for guest context
+    // Phone index lookup for guest context + full profile merge
     const callerMatch = lookupPhoneInIndex(from);
-    let guestProfile = null;
+    let guestProfile = await getGuestProfileByPhoneAsync(from);
     if (callerMatch) {
-      guestProfile = {
-        name: callerMatch.guestName,
-        preferences: {},
-        past_stays: [{ hotel: callerMatch.hotelName, dates: `${callerMatch.checkIn} to ${callerMatch.checkOut}`, type: 'reservation' }],
-        _phoneMatch: { bookingCode: callerMatch.bookingCode, hotelName: callerMatch.hotelName, checkIn: callerMatch.checkIn, checkOut: callerMatch.checkOut, roomType: callerMatch.roomType }
-      };
-      console.log(`[WHATSAPP] Guest identified: ${callerMatch.guestName} (${callerMatch.bookingCode})`);
-      // Track language in guest profile
+      const phoneMatchData = { bookingCode: callerMatch.bookingCode, hotelName: callerMatch.hotelName, checkIn: callerMatch.checkIn, checkOut: callerMatch.checkOut, roomType: callerMatch.roomType };
+      if (guestProfile) {
+        // Merge phone index reservation data into full profile
+        guestProfile._phoneMatch = phoneMatchData;
+        const existingStay = (guestProfile.past_stays || []).find(s => s.hotel === callerMatch.hotelName && s.dates?.includes(callerMatch.checkIn));
+        if (!existingStay) {
+          guestProfile.past_stays = [...(guestProfile.past_stays || []), { hotel: callerMatch.hotelName, dates: `${callerMatch.checkIn} to ${callerMatch.checkOut}`, type: 'reservation' }];
+        }
+        console.log(`[WHATSAPP] Guest identified (full profile): ${guestProfile.name} (${callerMatch.bookingCode})`);
+      } else {
+        guestProfile = {
+          name: callerMatch.guestName,
+          preferences: {},
+          past_stays: [{ hotel: callerMatch.hotelName, dates: `${callerMatch.checkIn} to ${callerMatch.checkOut}`, type: 'reservation' }],
+          _phoneMatch: phoneMatchData
+        };
+        console.log(`[WHATSAPP] Guest identified (phone index): ${callerMatch.guestName} (${callerMatch.bookingCode})`);
+      }
+      // Track language and phone in guest profile
       if (incomingText) {
         const detectedLang = detectLanguage(incomingText);
         const existingProfile = await getGuestProfileByNameAsync(callerMatch.guestName);
@@ -355,6 +370,8 @@ router.post('/webhook', async (req, res) => {
           }).catch(e => console.error('[PROFILE] WA language save error:', e.message));
         }
       }
+    } else if (guestProfile) {
+      console.log(`[WHATSAPP] Guest identified (phone profile): ${guestProfile.name}`);
     }
 
     // Detect conversation language from message content (priority) or phone country code
@@ -432,7 +449,7 @@ Exception: If the guest already provided all details (hotel, dates, guests), you
       for (const call of functionCalls) {
         let result;
         try {
-          result = await executeToolCall(call.name, call.args, generatedAttachments, activeSession);
+          result = await executeToolCall(call.name, call.args, generatedAttachments, activeSession, 'whatsapp');
         } catch (toolError) {
           console.error(`[WHATSAPP] Tool error ${call.name}:`, toolError.message);
           result = { error: true, message: `Tool error: ${toolError.message}` };

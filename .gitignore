@@ -20,6 +20,9 @@ data/*.json
 # Keys
 *.pem
 
+# Built assets
+assets/
+
 # Backups
 backups/
 server.js.backup

@@ -28,13 +28,13 @@ import { detectLanguage } from '../lib/language.js';
 import { rateLimit } from '../lib/auth.js';
 import { buildSystemInstruction, geminiToolDeclarations } from '../backend/gemini.js';
 import { executeToolCall } from '../backend/tools.js';
-import { getGuestProfileByNameAsync, saveGuestProfileAsync } from '../backend/guests.js';
+import { getGuestProfileByNameAsync, getGuestProfileAsync, getGuestProfileByPhoneAsync, saveGuestProfileAsync } from '../backend/guests.js';
 
 const router = Router();
 
 router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
   try {
-    const { message, sessionId, location, image, guestName } = req.body;
+    const { message, sessionId, location, image, guestName, guestPhone, guestEmail } = req.body;
 
     // Voice init ping — just establish session, no message processing
     if (req.body.voiceInit && sessionId) {
@@ -67,7 +67,9 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
     // Get or create session (with optional guest profile injection)
     let sessionData = chatSessions.get(sid);
     if (!sessionData) {
-      const guestProfile = guestName ? await getGuestProfileByNameAsync(guestName) : null;
+      const guestProfile = (guestEmail ? await getGuestProfileAsync(guestEmail) : null)
+        || (guestPhone ? await getGuestProfileByPhoneAsync(guestPhone) : null)
+        || (guestName ? await getGuestProfileByNameAsync(guestName) : null);
       if (guestProfile) console.log(`[PROFILE] Returning guest detected: ${guestProfile.name} (${guestProfile.email})`);
       const systemInstruction = await buildSystemInstruction(guestProfile);
       const model = ai.getGenerativeModel({
@@ -179,7 +181,9 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
         previousHistory = previousHistory.slice(0, -1);
       }
       chatSessions.delete(sid);
-      const guestProfile = guestName ? await getGuestProfileByNameAsync(guestName) : null;
+      const guestProfile = (guestEmail ? await getGuestProfileAsync(guestEmail) : null)
+        || (guestPhone ? await getGuestProfileByPhoneAsync(guestPhone) : null)
+        || (guestName ? await getGuestProfileByNameAsync(guestName) : null);
       const systemInstruction = await buildSystemInstruction(guestProfile);
       const retryModel = ai.getGenerativeModel({
         model: "gemini-2.5-flash",
@@ -217,7 +221,7 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
         try {
           // Increment tool call count for cost tracking
           sessionData.toolCallCount++;
-          result = await executeToolCall(call.name, call.args, generatedAttachments, chat2);
+          result = await executeToolCall(call.name, call.args, generatedAttachments, chat2, 'web');
         } catch (toolError) {
           console.error(`[TOOL ERROR] ${call.name}:`, toolError);
           result = { error: true, message: `Tool error: ${toolError.message}` };

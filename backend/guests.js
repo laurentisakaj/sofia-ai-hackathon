@@ -126,6 +126,19 @@ const getGuestProfileByName = (name) => {
   return null;
 };
 
+const getGuestProfileByPhoneAsync = async (phone) => {
+  if (!phone) return null;
+  const normalized = phone.replace(/[^0-9]/g, '');
+  if (!normalized) return null;
+  const profiles = await loadGuestProfilesAsync();
+  for (const [, profile] of Object.entries(profiles)) {
+    if (profile.phones && profile.phones.some(p => p.replace(/[^0-9]/g, '') === normalized)) {
+      return profile;
+    }
+  }
+  return null;
+};
+
 const getGuestProfileByNameAsync = async (name) => {
   if (!name) return null;
   const profiles = await loadGuestProfilesAsync();
@@ -146,5 +159,6 @@ export {
   getGuestProfileAsync,
   getGuestProfileByName,
   getGuestProfileByNameAsync,
+  getGuestProfileByPhoneAsync,
   updateVipStatus,
 };

@@ -38,7 +38,9 @@ export const sendMessageToGemini = async (
         sessionId,
         location: location || undefined,
         image: image || undefined,
-        guestName: localStorage.getItem('ognissanti_guest_name') || undefined
+        guestName: localStorage.getItem('ognissanti_guest_name') || undefined,
+        guestPhone: localStorage.getItem('ognissanti_guest_phone') || undefined,
+        guestEmail: localStorage.getItem('ognissanti_guest_email') || undefined
       })
     });
 

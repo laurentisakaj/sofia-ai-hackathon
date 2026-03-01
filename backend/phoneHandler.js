@@ -10,7 +10,7 @@ import { handlePostCallActions, savePhoneCallAsync } from './phone.js';
 import { lookupPhoneInIndex } from './hotelincloud.js';
 import { detectLanguageFromPhone } from '../lib/language.js';
 import { sendWhatsAppTemplate } from './whatsapp.js';
-import { saveGuestProfileAsync, getGuestProfileByNameAsync } from './guests.js';
+import { saveGuestProfileAsync, getGuestProfileByNameAsync, getGuestProfileByPhoneAsync } from './guests.js';
 import { trimToolResultForVoice, autoBuiltOffers, HIC_TOOLS } from './voiceShared.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
@@ -404,7 +404,7 @@ export async function handlePhoneConnection(ws, req) {
           const toolResponses = await Promise.all(functionCalls.map(async (call) => {
             const voiceAttachments = [];
             let result = await Promise.race([
-              executeToolCall(call.name, call.args, voiceAttachments, callerNumber),
+              executeToolCall(call.name, call.args, voiceAttachments, callerNumber, 'phone'),
               new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
             ]).catch(err => ({ error: err.message }));
 
@@ -415,7 +415,7 @@ export async function handlePhoneConnection(ws, req) {
               await new Promise(r => setTimeout(r, 2000));
               voiceAttachments.length = 0;
               result = await Promise.race([
-                executeToolCall(call.name, call.args, voiceAttachments, callerNumber),
+                executeToolCall(call.name, call.args, voiceAttachments, callerNumber, 'phone'),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
               ]).catch(err => ({ error: err.message }));
             }
@@ -654,6 +654,24 @@ export async function handlePhoneConnection(ws, req) {
     };
     await savePhoneCallAsync(callData);
     console.log(`[PHONE-WS] ${sessionId} Call saved: ${duration}s, ${transcript.length} turns`);
+
+    // Save call interaction to guest profile if identified
+    if (guestName && callerNumber !== 'unknown') {
+      try {
+        const profile = await getGuestProfileByPhoneAsync(callerNumber) || await getGuestProfileByNameAsync(guestName);
+        const email = profile?.email || `${callerNumber.replace(/[^0-9]/g, '')}@phone.ognissanti`;
+        await saveGuestProfileAsync(email, {
+          name: guestName,
+          phones: [callerNumber.replace(/[^0-9]/g, '')],
+          past_stays: [...(profile?.past_stays || []), {
+            hotel: hotelName || 'Ognissanti Hotels', dates: new Date().toISOString().split('T')[0], type: 'phone_call'
+          }].filter((s, i, arr) => arr.findIndex(x => x.hotel === s.hotel && x.dates === s.dates && x.type === s.type) === i)
+        });
+        console.log(`[PHONE-WS] ${sessionId} Updated guest profile for ${guestName}`);
+      } catch (e) {
+        console.error(`[PHONE-WS] ${sessionId} Profile save error:`, e.message);
+      }
+    }
 
     // Trigger post-call actions (email transcript to admin, WhatsApp follow-up)
     handlePostCallActions(callData).catch(err => {

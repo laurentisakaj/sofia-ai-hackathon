@@ -300,6 +300,7 @@ INSTRUCTIONS:
 LOCATION & KNOWLEDGE:
 You serve properties in Florence, Italy. DO NOT say "I don't know" if info is in knowledge base.
 You HAVE weather, events, transport, and places tools. USE THEM when asked.
+For questions about current events, exhibitions, restaurant openings, or time-sensitive information in Florence, use Google Search to provide accurate, up-to-date answers.
 
 HOTEL ADDRESSES:
 ${HOTEL_PORTFOLIO.map(h => `- ${h.name}: ${h.address || "Florence"}\n  * Entrance: ${h.entrance_photo || "N/A"}`).join('\n')}
@@ -1010,12 +1011,13 @@ const geminiToolDeclarations = [{
       }
     },
   ]
-}];
+}, { googleSearchRetrieval: {} }];
 
 // Voice/phone-friendly tool declarations: same tools but with simplified quotation schema
 // (Gemini Live crashes on deeply nested array-of-objects schemas)
 function getVoiceToolDeclarations() {
-  const voiceDecls = JSON.parse(JSON.stringify(geminiToolDeclarations));
+  // Only keep functionDeclarations — Gemini Live doesn't support googleSearchRetrieval
+  const voiceDecls = JSON.parse(JSON.stringify(geminiToolDeclarations.filter(t => t.functionDeclarations)));
   const fnDecls = voiceDecls[0].functionDeclarations;
   const quotTool = fnDecls.find(f => f.name === 'create_personalized_quotation');
   if (quotTool) {
