@@ -18,8 +18,8 @@
   .bg-gradient {
     position: absolute; inset: 0; z-index: 1;
     background:
-      radial-gradient(ellipse 800px 600px at 68% 48%, rgba(184,134,11,0.06) 0%, transparent 70%),
-      linear-gradient(165deg, #FAF7F2 0%, #F5F0E8 40%, #EDE6DA 70%, #FAF7F2 100%);
+      radial-gradient(ellipse 900px 700px at 72% 50%, rgba(184,134,11,0.05) 0%, transparent 70%),
+      radial-gradient(ellipse 1600px 900px at 50% 50%, #F5F0E8 0%, #FAF7F2 100%);
   }
 
   .top-line {
@@ -28,8 +28,8 @@
   }
 
   #orbCanvas {
-    position: absolute; right: 0; top: 0;
-    width: 900px; height: 900px;
+    position: absolute; left: 0; top: 0;
+    width: 1600px; height: 900px;
     z-index: 2;
   }
 
@@ -125,10 +125,10 @@
     color: rgba(44,24,16,0.2);
   }
 
-  /* Channel cards — positioned by JS in a perfect pentagon/star */
+  /* Channel cards — positioned by JS in a perfect hexagon */
   .channels {
-    position: absolute; right: 0; top: 0;
-    width: 900px; height: 900px;
+    position: absolute; left: 0; top: 0;
+    width: 1600px; height: 900px;
     z-index: 6; pointer-events: none;
   }
 
@@ -157,10 +157,6 @@
   .ch-wa .ch-dot    { background: #25D366; box-shadow: 0 0 6px rgba(37,211,102,0.5); }
   .ch-tools .ch-dot { background: #B8860B; box-shadow: 0 0 6px rgba(184,134,11,0.5); }
 
-  .divider {
-    position: absolute; top: 0; left: 700px; width: 1px; height: 100%; z-index: 3;
-    background: linear-gradient(to bottom, transparent 5%, rgba(184,134,11,0.08) 25%, rgba(184,134,11,0.12) 50%, rgba(184,134,11,0.08) 75%, transparent 95%);
-  }
 </style>
 </head>
 <body>
@@ -168,7 +164,6 @@
 <div class="cover">
   <div class="bg-gradient"></div>
   <div class="top-line"></div>
-  <div class="divider"></div>
 
   <div class="left">
     <div class="badge"><span class="dot"></span> Live in production — 6 hotels in Florence</div>
@@ -190,7 +185,7 @@
     </div>
   </div>
 
-  <canvas id="orbCanvas" width="1800" height="1800"></canvas>
+  <canvas id="orbCanvas" width="3200" height="1800"></canvas>
 
   <div class="channels" id="channels">
     <div class="channel ch-voice" id="ch0"><span class="ch-dot"></span> Voice Mode</div>
@@ -211,7 +206,7 @@
 
 <script>
 // Position channel cards in a perfect hexagon around center
-const centerX = 450, centerY = 450;
+const centerX = 1150, centerY = 450;
 const radius = 290;
 const startAngle = -Math.PI / 2; // Start from top
 
@@ -229,11 +224,12 @@ const canvas = document.getElementById('orbCanvas');
 const ctx = canvas.getContext('2d');
 const TAU = Math.PI * 2;
 const PARTICLE_COUNT = 500;
-const S = 900;
-const cx = S / 2, cy = S / 2;
+// Canvas is full-width (1600x900 CSS, 3200x1800 actual)
+// Orb center at (1150, 450) in CSS coords = right half center
 ctx.scale(2, 2);
+const cx = 1150, cy = 450;
 
-const sphereR = S * 0.22;
+const sphereR = 900 * 0.22; // ~198px radius
 
 const particles = [];
 for (let i = 0; i < PARTICLE_COUNT; i++) {
