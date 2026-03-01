@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sofia AI Cover</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #FAF7F2; width: 1600px; height: 900px; overflow: hidden; }
+
+  .cover {
+    width: 1600px; height: 900px;
+    position: relative; overflow: hidden;
+    background: #FAF7F2;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .bg-gradient {
+    position: absolute; inset: 0; z-index: 1;
+    background:
+      radial-gradient(ellipse 800px 600px at 68% 48%, rgba(184,134,11,0.06) 0%, transparent 70%),
+      linear-gradient(165deg, #FAF7F2 0%, #F5F0E8 40%, #EDE6DA 70%, #FAF7F2 100%);
+  }
+
+  .top-line {
+    position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 10;
+    background: linear-gradient(90deg, transparent 5%, rgba(184,134,11,0.25) 30%, rgba(184,134,11,0.4) 50%, rgba(184,134,11,0.25) 70%, transparent 95%);
+  }
+
+  #orbCanvas {
+    position: absolute; right: 0; top: 0;
+    width: 900px; height: 900px;
+    z-index: 2;
+  }
+
+  .left {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 680px;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 60px 0 90px;
+    z-index: 5;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: rgba(184,134,11,0.08);
+    border: 1px solid rgba(184,134,11,0.2);
+    color: #A67B28;
+    font-size: 11px; font-weight: 500; letter-spacing: 2.5px; text-transform: uppercase;
+    padding: 9px 20px; border-radius: 30px;
+    margin-bottom: 36px; width: fit-content;
+  }
+
+  .badge .dot {
+    width: 7px; height: 7px; background: #5EBB6F; border-radius: 50%;
+    box-shadow: 0 0 8px rgba(94,187,111,0.6);
+  }
+
+  h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 82px; font-weight: 900; line-height: 0.95;
+    color: #2C1810; margin-bottom: 10px; letter-spacing: -1px;
+  }
+
+  h1 .ai {
+    background: linear-gradient(135deg, #B8860B, #D4A853, #B8860B);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+
+  .tagline {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 22px; font-weight: 400; font-style: italic;
+    color: rgba(44,24,16,0.4); margin-bottom: 42px; letter-spacing: 0.5px;
+  }
+
+  .features {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 48px;
+  }
+
+  .feature {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(44,24,16,0.04);
+    border: 1px solid rgba(44,24,16,0.08);
+    padding: 9px 16px; border-radius: 8px;
+    color: rgba(44,24,16,0.6); font-size: 12.5px; font-weight: 400;
+  }
+
+  .feature .icon { font-size: 14px; }
+
+  .stats { display: flex; gap: 44px; }
+
+  .stat-number {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 38px; font-weight: 700;
+    background: linear-gradient(180deg, #B8860B 20%, #8B6508 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 10px; font-weight: 500;
+    color: rgba(44,24,16,0.3);
+    text-transform: uppercase; letter-spacing: 2px; margin-top: 6px;
+  }
+
+  .powered-by {
+    position: absolute; bottom: 38px; left: 90px; z-index: 5;
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .powered-by .label {
+    font-size: 11px; color: rgba(44,24,16,0.25);
+    letter-spacing: 1.5px; text-transform: uppercase; font-weight: 400;
+  }
+
+  .g-icon {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: conic-gradient(from 0deg, #4285F4, #34A853, #FBBC05, #EA4335, #4285F4);
+  }
+
+  .g-text { font-size: 13px; font-weight: 500; color: rgba(44,24,16,0.4); }
+
+  .category {
+    position: absolute; bottom: 38px; right: 60px; z-index: 5;
+    font-size: 10px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(44,24,16,0.2);
+  }
+
+  /* Channel cards — positioned by JS in a perfect pentagon/star */
+  .channels {
+    position: absolute; right: 0; top: 0;
+    width: 900px; height: 900px;
+    z-index: 6; pointer-events: none;
+  }
+
+  .channel {
+    position: absolute;
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(184,134,11,0.15);
+    padding: 11px 20px; border-radius: 12px;
+    font-size: 13px; font-weight: 500;
+    color: #2C1810;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 4px 20px rgba(44,24,16,0.08);
+    transform: translate(-50%, -50%);
+  }
+
+  .channel .ch-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .ch-voice .ch-dot { background: #D4A853; box-shadow: 0 0 6px rgba(212,168,83,0.5); }
+  .ch-video .ch-dot { background: #5EBB6F; box-shadow: 0 0 6px rgba(94,187,111,0.5); }
+  .ch-phone .ch-dot { background: #E8834A; box-shadow: 0 0 6px rgba(232,131,74,0.5); }
+  .ch-chat .ch-dot  { background: #6BA3D6; box-shadow: 0 0 6px rgba(107,163,214,0.5); }
+  .ch-wa .ch-dot    { background: #25D366; box-shadow: 0 0 6px rgba(37,211,102,0.5); }
+  .ch-tools .ch-dot { background: #B8860B; box-shadow: 0 0 6px rgba(184,134,11,0.5); }
+
+  .divider {
+    position: absolute; top: 0; left: 700px; width: 1px; height: 100%; z-index: 3;
+    background: linear-gradient(to bottom, transparent 5%, rgba(184,134,11,0.08) 25%, rgba(184,134,11,0.12) 50%, rgba(184,134,11,0.08) 75%, transparent 95%);
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="bg-gradient"></div>
+  <div class="top-line"></div>
+  <div class="divider"></div>
+
+  <div class="left">
+    <div class="badge"><span class="dot"></span> Live in production — 6 hotels in Florence</div>
+    <h1>Sofia <span class="ai">AI</span></h1>
+    <p class="tagline">The concierge who never sleeps</p>
+    <div class="features">
+      <div class="feature"><span class="icon">🎙</span> Voice</div>
+      <div class="feature"><span class="icon">📹</span> Video + GPS</div>
+      <div class="feature"><span class="icon">📞</span> Phone Calls</div>
+      <div class="feature"><span class="icon">💬</span> Web Chat</div>
+      <div class="feature"><span class="icon">📱</span> WhatsApp</div>
+      <div class="feature"><span class="icon">🔍</span> 17 Live Tools</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-number">5</div><div class="stat-label">Channels</div></div>
+      <div class="stat"><div class="stat-number">17</div><div class="stat-label">Live Tools</div></div>
+      <div class="stat"><div class="stat-number">6</div><div class="stat-label">Hotels</div></div>
+      <div class="stat"><div class="stat-number">24/7</div><div class="stat-label">Always On</div></div>
+    </div>
+  </div>
+
+  <canvas id="orbCanvas" width="1800" height="1800"></canvas>
+
+  <div class="channels" id="channels">
+    <div class="channel ch-voice" id="ch0"><span class="ch-dot"></span> Voice Mode</div>
+    <div class="channel ch-video" id="ch1"><span class="ch-dot"></span> Video + GPS</div>
+    <div class="channel ch-phone" id="ch2"><span class="ch-dot"></span> Phone Calls</div>
+    <div class="channel ch-chat" id="ch3"><span class="ch-dot"></span> Web Chat</div>
+    <div class="channel ch-wa" id="ch4"><span class="ch-dot"></span> WhatsApp</div>
+    <div class="channel ch-tools" id="ch5"><span class="ch-dot"></span> 17 Live Tools</div>
+  </div>
+
+  <div class="powered-by">
+    <span class="label">Powered by</span>
+    <div class="g-icon"></div>
+    <span class="g-text">Google Gemini</span>
+  </div>
+  <div class="category">Gemini Live Agent Challenge</div>
+</div>
+
+<script>
+// Position channel cards in a perfect hexagon around center
+const centerX = 450, centerY = 450;
+const radius = 290;
+const startAngle = -Math.PI / 2; // Start from top
+
+for (let i = 0; i < 6; i++) {
+  const angle = startAngle + (i * 2 * Math.PI / 6);
+  const x = centerX + radius * Math.cos(angle);
+  const y = centerY + radius * Math.sin(angle);
+  const el = document.getElementById('ch' + i);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+}
+
+// Render Sofia's particle orb
+const canvas = document.getElementById('orbCanvas');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const PARTICLE_COUNT = 500;
+const S = 900;
+const cx = S / 2, cy = S / 2;
+ctx.scale(2, 2);
+
+const sphereR = S * 0.22;
+
+const particles = [];
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const phi = Math.acos(1 - 2 * (i + 0.5) / PARTICLE_COUNT);
+  const theta = TAU * i / ((1 + Math.sqrt(5)) / 2);
+  const variant = Math.random();
+  let hue, sat, lit;
+  if (variant < 0.5) {
+    hue = 36 + Math.random() * 8; sat = 80 + Math.random() * 15; lit = 50 + Math.random() * 20;
+  } else if (variant < 0.8) {
+    hue = 25 + Math.random() * 15; sat = 70 + Math.random() * 20; lit = 45 + Math.random() * 15;
+  } else {
+    hue = 38 + Math.random() * 10; sat = 30 + Math.random() * 30; lit = 75 + Math.random() * 20;
+  }
+  particles.push({ theta, phi, speed: 0.2 + Math.random() * 0.4, size: 1.4 + Math.random() * 2.2, hue, sat, lit, brightness: 0.5 + Math.random() * 0.5 });
+}
+
+const time = 2.4, rotY = 0.65, rotX = 0.18, totalE = 0.35;
+
+// Core glow
+const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sphereR * 0.9);
+coreGrad.addColorStop(0, 'hsla(40, 85%, 72%, 0.45)');
+coreGrad.addColorStop(0.3, 'hsla(38, 80%, 58%, 0.22)');
+coreGrad.addColorStop(0.6, 'hsla(35, 70%, 45%, 0.08)');
+coreGrad.addColorStop(1, 'hsla(30, 60%, 35%, 0)');
+ctx.fillStyle = coreGrad;
+ctx.beginPath(); ctx.arc(cx, cy, sphereR * 0.9, 0, TAU); ctx.fill();
+
+// Outer haze
+const hazeGrad = ctx.createRadialGradient(cx, cy, sphereR * 0.3, cx, cy, sphereR * 1.6);
+hazeGrad.addColorStop(0, 'hsla(38, 65%, 58%, 0.08)');
+hazeGrad.addColorStop(1, 'hsla(35, 50%, 45%, 0)');
+ctx.fillStyle = hazeGrad;
+ctx.beginPath(); ctx.arc(cx, cy, sphereR * 1.6, 0, TAU); ctx.fill();
+
+// Orbital rings
+ctx.strokeStyle = 'rgba(184, 134, 11, 0.06)'; ctx.lineWidth = 1;
+[sphereR * 1.2, sphereR * 1.45].forEach(r => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke(); });
+ctx.setLineDash([4, 8]);
+ctx.strokeStyle = 'rgba(184, 134, 11, 0.04)';
+ctx.beginPath(); ctx.arc(cx, cy, sphereR * 1.75, 0, TAU); ctx.stroke();
+ctx.setLineDash([]);
+
+// Connection lines from center to hexagon points
+const dotColors = [
+  'rgba(212,168,83,0.12)', 'rgba(94,187,111,0.10)',
+  'rgba(232,131,74,0.10)', 'rgba(107,163,214,0.10)', 'rgba(37,211,102,0.10)',
+  'rgba(184,134,11,0.12)'
+];
+for (let i = 0; i < 6; i++) {
+  const angle = -Math.PI / 2 + (i * 2 * Math.PI / 6);
+  const tx = cx + radius * Math.cos(angle);
+  const ty = cy + radius * Math.sin(angle);
+  const grad = ctx.createLinearGradient(cx, cy, tx, ty);
+  grad.addColorStop(0, 'rgba(184,134,11,0.0)');
+  grad.addColorStop(0.35, dotColors[i]);
+  grad.addColorStop(0.75, dotColors[i]);
+  grad.addColorStop(1, 'rgba(184,134,11,0.0)');
+  ctx.strokeStyle = grad; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+}
+
+// 3D rotation
+const cosRY = Math.cos(rotY), sinRY = Math.sin(rotY);
+const cosRX = Math.cos(rotX), sinRX = Math.sin(rotX);
+
+const projected = [];
+for (const p of particles) {
+  const wave = Math.sin(p.theta * 4 + time * 2) * Math.cos(p.phi * 3 + time * 1.5);
+  const r = sphereR * (1 + wave * totalE * 0.18);
+  const sinPhi = Math.sin(p.phi);
+  const ta = p.theta + time * p.speed * 0.15;
+  let x = r * sinPhi * Math.cos(ta), y = r * Math.cos(p.phi), z = r * sinPhi * Math.sin(ta);
+  const x1 = x * cosRY - z * sinRY, z1 = x * sinRY + z * cosRY;
+  const y1 = y * cosRX - z1 * sinRX, z2 = y * sinRX + z1 * cosRX;
+  projected.push({ x: cx + x1, y: cy + y1, z: z2, p });
+}
+projected.sort((a, b) => a.z - b.z);
+
+ctx.globalCompositeOperation = 'lighter';
+for (const { x, y, z, p } of projected) {
+  const d = (z + sphereR) / (2 * sphereR);
+  const alpha = (0.1 + d * 0.6) * (0.5 + totalE * 0.5) * p.brightness;
+  const size = p.size * (0.4 + d * 1.1) * (1 + totalE * 0.6);
+  const lit = p.lit + d * 15 + totalE * 10;
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, size * 2.5);
+  grad.addColorStop(0, `hsla(${p.hue}, ${p.sat}%, ${lit}%, ${alpha})`);
+  grad.addColorStop(0.5, `hsla(${p.hue}, ${p.sat-10}%, ${lit-8}%, ${alpha*0.4})`);
+  grad.addColorStop(1, `hsla(${p.hue}, ${p.sat-15}%, ${lit-15}%, 0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x, y, size * 2.5, 0, TAU); ctx.fill();
+  if (d > 0.5) {
+    ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, ${Math.min(lit+20,95)}%, ${alpha*0.8})`;
+    ctx.beginPath(); ctx.arc(x, y, size * 0.6, 0, TAU); ctx.fill();
+  }
+}
+
+const front = projected.filter(p => p.z > 0);
+ctx.strokeStyle = 'hsla(40, 80%, 65%, 0.05)'; ctx.lineWidth = 0.5;
+for (let i = 0; i < front.length; i++) {
+  const a = front[i];
+  for (let j = i+1; j < Math.min(i+8, front.length); j++) {
+    const b = front[j];
+    const dx = a.x-b.x, dy = a.y-b.y;
+    if (Math.sqrt(dx*dx+dy*dy) < 25) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+  }
+}
+ctx.globalCompositeOperation = 'source-over';
+
+const specX = cx - sphereR*0.25, specY = cy - sphereR*0.25;
+const specGrad = ctx.createRadialGradient(specX, specY, 0, specX, specY, sphereR*0.5);
+specGrad.addColorStop(0, 'hsla(45, 50%, 95%, 0.12)');
+specGrad.addColorStop(0.5, 'hsla(42, 40%, 85%, 0.04)');
+specGrad.addColorStop(1, 'hsla(40, 30%, 70%, 0)');
+ctx.fillStyle = specGrad;
+ctx.beginPath(); ctx.arc(specX, specY, sphereR*0.5, 0, TAU); ctx.fill();
+</script>
+
+</body>
+</html>
