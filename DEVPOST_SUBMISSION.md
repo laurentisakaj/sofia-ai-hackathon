@@ -4,7 +4,7 @@
 Sofia AI — Live Multimodal Concierge for Hotels
 
 ## Short Description (Tagline)
-A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 16 live tools. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
+A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 17 live tools with Google Search grounding. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
 
 ---
 
@@ -50,7 +50,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 ---
 
-## The 16 Live Tools Sofia Executes in Real-Time
+## The 17 Live Tools Sofia Executes in Real-Time
 
 1. **Room Availability:** Live pricing across all 6 properties via HotelInCloud API, with rate comparison vs Booking.com
 2. **Personalized Quotations:** Creates real booking offers with payment links, sent to guest email
@@ -59,15 +59,16 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 5. **Partner Tours:** Searches 50+ Florence tours via Bokun API with direct per-tour booking links
 6. **Visual Itinerary Builder:** Creates structured day-by-day plans incorporating partner tours and local recommendations
 7. **WhatsApp Flows:** Triggers native interactive WhatsApp forms for booking, check-in, tour selection, and feedback — encrypted with RSA-OAEP + AES-128-GCM
-8. **Nearby Places:** Google Places API with ratings, open/closed status, and walking directions
-9. **Weather:** Live forecasts via Open-Meteo API
-10. **Train Schedules:** Real-time departures from Firenze Santa Maria Novella with platform numbers and delay status
-11. **Public Transport:** Google Directions API for bus and tram routes across Florence
-12. **Hotel Location:** Maps, verified entrance photos, and turn-by-turn directions for all 6 properties
-13. **Florence Events:** Local calendar for concerts, exhibitions, and markets
-14. **Support Email:** Sends messages directly to hotel reception on the guest's behalf
-15. **Human Handoff:** Provides direct staff contact info when the situation requires a human
-16. **Knowledge Base Updates:** Proposes new knowledge entries when guests ask questions Sofia cannot answer from verified sources
+8. **Google Search Grounding:** Real-time web search for current Florence events, exhibitions, restaurant openings, and time-sensitive local information — answers stay accurate even when the knowledge base hasn't been updated
+9. **Nearby Places:** Google Places API with ratings, open/closed status, and walking directions
+10. **Weather:** Live forecasts via Open-Meteo API
+11. **Train Schedules:** Real-time departures from Firenze Santa Maria Novella with platform numbers and delay status
+12. **Public Transport:** Google Directions API for bus and tram routes across Florence
+13. **Hotel Location:** Maps, verified entrance photos, and turn-by-turn directions for all 6 properties
+14. **Florence Events:** Local calendar for concerts, exhibitions, and markets
+15. **Support Email:** Sends messages directly to hotel reception on the guest's behalf
+16. **Human Handoff:** Provides direct staff contact info when the situation requires a human
+17. **Knowledge Base Updates:** Proposes new knowledge entries when guests ask questions Sofia cannot answer from verified sources
 
 ---
 
@@ -79,7 +80,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 **Language Detection:** Automatically switches language based on what the guest writes or their phone country code. Italian, French, German, Spanish, and English are all supported natively, with the full system prompt and all tool responses translated per language.
 
-**Guest Memory:** Returning guests are recognized and their preferences predicted from booking history including preferred hotel, typical stay length, and usual room type.
+**Cross-Channel Memory:** A guest who messages on WhatsApp, then calls, then opens the web chat is recognized as the same person across all three channels. Sofia remembers the full conversation history — if a guest asks about room prices on WhatsApp and then calls to book, she already knows which room they want. Guest profiles are matched by phone number, email, or name and persist across sessions and channels.
 
 **Location Awareness:** In video mode, GPS coordinates are streamed to Gemini alongside camera and audio. Sofia uses the guest's real-time position to provide walking directions, recommend the nearest pharmacy or restaurant, and identify what the guest is looking at relative to known landmarks.
 
@@ -95,7 +96,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 This is a production system handling real money and real guests. Sofia is strictly grounded at every level.
 
-Room prices and availability always come from the live HotelInCloud API, never from memory. Reservation details are fetched in real-time, never assumed. Local recommendations use Google Places API ratings and live open/closed status. Train schedules are scraped from live departure boards at the moment of the request. When Sofia does not know something, she proposes a knowledge base update rather than inventing an answer.
+Room prices and availability always come from the live HotelInCloud API, never from memory. Reservation details are fetched in real-time, never assumed. Local recommendations use Google Places API ratings and live open/closed status. Train schedules are scraped from live departure boards at the moment of the request. For time-sensitive questions about current exhibitions, events, or restaurant openings, Sofia uses Google Search grounding to pull live web results rather than relying on potentially stale knowledge. When Sofia does not know something, she proposes a knowledge base update rather than inventing an answer.
 
 A tool-call verification guard actively detects when Sofia claims to have performed an action without actually calling a tool, and corrects her immediately:
 
@@ -124,6 +125,8 @@ if (actionPhrases.some(phrase => outputText.toLowerCase().includes(phrase)) && !
 **Admin dashboard:** Full conversation history grouped by session and channel across Web and WhatsApp, with analytics covering the conversion funnel, peak hours, and language breakdown across all guests.
 
 **Knowledge base management:** Hotel staff can update Sofia's knowledge through a protected admin panel without touching any code.
+
+**Revenue attribution:** Every quotation Sofia creates is tracked through the full funnel — creation, click, and booking — with channel attribution (web, WhatsApp, or phone). The admin dashboard shows conversion rates per hotel and per channel, giving management clear visibility into Sofia's direct revenue impact.
 
 **WhatsApp Interactive Flows:** Native WhatsApp forms for structured booking, check-in, tour selection, and guest feedback, all powered by server-side data exchange encrypted with RSA-OAEP and AES-128-GCM.
 
@@ -205,7 +208,7 @@ const samples = new Int16Array(fresh);
 
 **Gemini transcription artifacts:** The Live API occasionally emits control character sequences like `<ctrl46>` as output transcription tokens after turn completion. These required filtering at the transcription handler level before sending to the frontend.
 
-**Context window management:** With 16 tools, a large system prompt, and long guest conversations, the context window fills quickly during phone calls. We implemented sliding window compression:
+**Context window management:** With 17 tools, a large system prompt, and long guest conversations, the context window fills quickly during phone calls. We implemented sliding window compression:
 
 ```javascript
 contextWindowCompression: {
@@ -257,6 +260,7 @@ Predictive room assignment based on guest preference history analyzed across mul
 - [Google GenAI SDK](https://ai.google.dev/gemini-api/docs) — Gemini API integration
 - [Google Places API](https://developers.google.com/maps/documentation/places/web-service) — nearby restaurants, attractions, ratings
 - [Google Directions API](https://developers.google.com/maps/documentation/directions) — public transport routing
+- [Google Search Grounding](https://ai.google.dev/gemini-api/docs/grounding) — real-time web search for current events and local info
 - [Google Artifact Registry](https://cloud.google.com/artifact-registry) — Docker image storage
 
 **Backend**
