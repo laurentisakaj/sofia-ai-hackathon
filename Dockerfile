@@ -15,7 +15,9 @@ COPY services/ services/
 COPY assets/ assets/
 COPY public/ public/
 
-# Build frontend
+# Build frontend (Vite bakes VITE_* env vars at build time)
+ARG VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
 # Stage 2: Production runtime
