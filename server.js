@@ -135,6 +135,10 @@ app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()');
+  // Prevent caching of HTML pages (chat contains user-specific content in localStorage)
+  if (req.accepts('html') && !req.path.match(/\.(js|css|png|jpg|svg|ico|woff2?)$/)) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://widgets.bokun.io https://maps.googleapis.com",

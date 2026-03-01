@@ -329,9 +329,8 @@ router.get('/api/auth/status', (req, res) => {
   res.json({ isAuthenticated: !!req.signedCookies.admin_session });
 });
 
-// Get Knowledge Base (Public for AI to work)
-router.get('/api/data', async (req, res) => {
-  console.log("GET /api/data requested");
+// Get Knowledge Base (Protected — only used by AdminPanel)
+router.get('/api/data', requireAuth, async (req, res) => {
   try {
     const data = await readJsonFileAsync(KNOWLEDGE_FILE, DEFAULT_KNOWLEDGE);
     res.json(data);
