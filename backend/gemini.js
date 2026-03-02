@@ -1006,12 +1006,12 @@ const geminiToolDeclarations = [{
       }
     },
   ]
-}, { googleSearchRetrieval: {} }];
+}];
 
 // Voice/phone-friendly tool declarations: same tools but with simplified quotation schema
 // (Gemini Live crashes on deeply nested array-of-objects schemas)
 function getVoiceToolDeclarations() {
-  // Only keep functionDeclarations — Gemini Live doesn't support googleSearchRetrieval
+  // Only keep functionDeclarations — Gemini Live doesn't support googleSearch
   const voiceDecls = JSON.parse(JSON.stringify(geminiToolDeclarations.filter(t => t.functionDeclarations)));
   const fnDecls = voiceDecls[0].functionDeclarations;
   const quotTool = fnDecls.find(f => f.name === 'create_personalized_quotation');

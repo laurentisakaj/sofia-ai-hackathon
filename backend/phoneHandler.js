@@ -121,8 +121,9 @@ export async function handlePhoneConnection(ws, req) {
   const sessionId = `phone-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   console.log(`[PHONE-WS] New connection: ${sessionId} from ${callerNumber}${guestName ? ` (${guestName})` : ''}`);
 
-  // Audio recording — collect both streams with timestamps for correct timeline placement
-  const recordingChunks = [];  // { samples: Int16Array (16kHz), timeMs: number }
+  // Audio recording — separate guest and Sofia tracks for clean mixing
+  const guestChunks = [];  // { samples: Int16Array (16kHz), timeMs: number }
+  const sofiaChunks = [];  // { samples: Int16Array (16kHz), timeMs: number }
 
   // Track call for logging — accumulate fragments into complete turns
   const transcriptParts = { user: [], assistant: [] };
@@ -354,7 +355,7 @@ export async function handlePhoneConnection(ws, req) {
                   const rawBuf = Buffer.from(part.inlineData.data, 'base64');
                   const samples24k = new Int16Array(rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength));
                   const samples16k = resample24kTo16k(samples24k);
-                  recordingChunks.push({ samples: samples16k, timeMs: Date.now() - callStartTime });
+                  sofiaChunks.push({ samples: samples16k, timeMs: Date.now() - callStartTime });
                 } catch {}
                 if (ws.readyState === 1) {
                   ws.send(JSON.stringify({
@@ -689,7 +690,7 @@ export async function handlePhoneConnection(ws, req) {
         try {
           const pcmBuf = Buffer.from(message.content, 'base64');
           const samples = new Int16Array(pcmBuf.buffer.slice(pcmBuf.byteOffset, pcmBuf.byteOffset + pcmBuf.byteLength));
-          recordingChunks.push({ samples, timeMs: Date.now() - callStartTime });
+          guestChunks.push({ samples, timeMs: Date.now() - callStartTime });
         } catch {}
         // Detailed logging for first 5 chunks
         if (audioChunkCount <= 5) {
@@ -742,35 +743,40 @@ export async function handlePhoneConnection(ws, req) {
       if (transcriptParts.assistant[i]) transcript.push({ role: 'assistant', text: transcriptParts.assistant[i] });
     }
 
-    // Mix and save call recording as WAV — place each chunk at its real timestamp
+    // Mix and save call recording as WAV — two separate tracks then sum
     let recordingPath = null;
     try {
-      if (recordingChunks.length > 0) {
-        // Find total duration: last chunk timestamp + its duration
+      if (guestChunks.length > 0 || sofiaChunks.length > 0) {
+        // Find total duration across both tracks
         let maxSampleEnd = 0;
-        for (const chunk of recordingChunks) {
-          const startSample = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
-          const endSample = startSample + chunk.samples.length;
+        for (const chunk of [...guestChunks, ...sofiaChunks]) {
+          const endSample = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000) + chunk.samples.length;
           if (endSample > maxSampleEnd) maxSampleEnd = endSample;
         }
 
-        // Create timeline buffer and mix all chunks at their correct positions
-        const mixed = new Int16Array(maxSampleEnd);
-        for (const chunk of recordingChunks) {
+        // Build each track separately (overwrite, not additive — consecutive chunks from same source don't overlap)
+        const guestTrack = new Int16Array(maxSampleEnd);
+        for (const chunk of guestChunks) {
           const offset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
-          for (let i = 0; i < chunk.samples.length; i++) {
-            const pos = offset + i;
-            if (pos < mixed.length) {
-              const sum = mixed[pos] + chunk.samples[i];
-              mixed[pos] = Math.max(-32768, Math.min(32767, sum));
-            }
-          }
+          guestTrack.set(chunk.samples, offset);
+        }
+        const sofiaTrack = new Int16Array(maxSampleEnd);
+        for (const chunk of sofiaChunks) {
+          const offset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
+          sofiaTrack.set(chunk.samples, offset);
+        }
+
+        // Mix: sum both tracks with clipping protection
+        const mixed = new Int16Array(maxSampleEnd);
+        for (let i = 0; i < maxSampleEnd; i++) {
+          const sum = guestTrack[i] + sofiaTrack[i];
+          mixed[i] = Math.max(-32768, Math.min(32767, sum));
         }
 
         recordingPath = path.join(RECORDINGS_DIR, `${callId}.wav`);
         writeWav(recordingPath, mixed);
         const durationSec = (maxSampleEnd / RECORD_SAMPLE_RATE).toFixed(1);
-        console.log(`[PHONE-WS] ${sessionId} Call recording saved: ${recordingPath} (${durationSec}s, ${recordingChunks.length} chunks)`);
+        console.log(`[PHONE-WS] ${sessionId} Call recording saved: ${recordingPath} (${durationSec}s, guest=${guestChunks.length} sofia=${sofiaChunks.length} chunks)`);
       }
     } catch (recErr) {
       console.error(`[PHONE-WS] ${sessionId} Recording save error:`, recErr.message);
