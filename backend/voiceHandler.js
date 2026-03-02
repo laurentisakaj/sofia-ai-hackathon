@@ -228,7 +228,7 @@ export async function handleVoiceConnection(ws, req) {
             ...getVoiceToolDeclarations().map(t => ({
               functionDeclarations: t.functionDeclarations
             })),
-            { googleSearch: {} } // Real-time web search during voice calls
+            { googleSearch: {} } // Supported on Live API (v1alpha) — only REST API (v1beta) blocks it
           ]
         }
       };
@@ -384,9 +384,11 @@ export async function handleVoiceConnection(ws, req) {
             rawText = rawText.replace(/<ctrl\d+>/gi, '');
             // Filter out non-Latin script transcriptions (Malayalam, CJK, Arabic, etc.)
             // All expected languages (it/en/fr/de/es) use Latin characters
-            const nonLatinRatio = (rawText.replace(/[\u0000-\u024F\u1E00-\u1EFF\s\d.,!?'"():;\-–—…]/g, '').length) / (rawText.length || 1);
-            if (nonLatinRatio > 0.3) {
-              // More than 30% non-Latin chars — likely a transcription error, skip
+            const nonLatinChars = rawText.replace(/[\u0000-\u024F\u1E00-\u1EFF\s\d.,!?'"():;\-–—…]/g, '');
+            const nonLatinRatio = nonLatinChars.length / (rawText.length || 1);
+            if (nonLatinRatio > 0.5) {
+              // More than 50% non-Latin chars — likely a transcription error, skip
+              console.log(`[VOICE] ${sessionId} Dropping non-Latin transcript fragment (${Math.round(nonLatinRatio * 100)}%): "${rawText.substring(0, 40)}"`);
               return;
             }
             if (rawText) {

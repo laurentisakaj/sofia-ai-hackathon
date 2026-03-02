@@ -67,7 +67,7 @@ import {
   sendEmail,
 } from '../lib/auth.js';
 
-import { hmacHashPhone, lookupPhoneInIndex } from '../backend/hotelincloud.js';
+import { hmacHashPhone, lookupPhoneInIndex, listSofiaQuotations } from '../backend/hotelincloud.js';
 import { loadPhoneCallsAsync, detectCallAnomalies } from '../backend/phone.js';
 import { getScheduledMessages } from '../backend/scheduler.js';
 import { detectLanguageFromPhone } from '../lib/language.js';
@@ -698,10 +698,21 @@ router.get('/api/admin/impact', requireAuth, async (req, res) => {
       langCounts[lang] = (langCounts[lang] || 0) + 1;
     }
 
-    // Quotation funnel
-    const quotationsCreated = stats.filter(s => s.type === 'QUOTATION_CREATED').length;
-    const bookingClicks = stats.filter(s => s.type === 'BOOKING_CLICK').length;
-    const conversionRate = quotationsCreated > 0 ? ((bookingClicks / quotationsCreated) * 100).toFixed(1) : '0.0';
+    // Quotation funnel — pull real conversion data from HotelInCloud
+    let quotationsCreated = 0;
+    let quotationsBooked = 0;
+    let conversionRate = '0.0';
+    try {
+      const sofiaQuotations = await listSofiaQuotations();
+      if (sofiaQuotations) {
+        quotationsCreated = sofiaQuotations.length;
+        quotationsBooked = sofiaQuotations.filter(q => q.is_booked).length;
+        conversionRate = quotationsCreated > 0 ? ((quotationsBooked / quotationsCreated) * 100).toFixed(1) : '0.0';
+      }
+    } catch (e) {
+      // Fallback to local stats if HIC is unreachable
+      quotationsCreated = stats.filter(s => s.type === 'QUOTATION_CREATED').length;
+    }
 
     // Hotels served
     const hotelsServed = 6;
@@ -751,7 +762,7 @@ router.get('/api/admin/impact', requireAuth, async (req, res) => {
       languages_served: Object.keys(langCounts).length,
       languages: langCounts,
       quotations_created: quotationsCreated,
-      booking_clicks: bookingClicks,
+      quotations_booked: quotationsBooked,
       conversion_rate: conversionRate,
       hotels_served: hotelsServed,
       phone_calls: phoneCalls.length,
@@ -762,6 +773,58 @@ router.get('/api/admin/impact', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error getting impact data:', error);
     res.status(500).json({ error: 'Failed to get impact data' });
+  }
+});
+
+// =====================================================
+// QUOTATION CONVERSION TRACKING
+// =====================================================
+
+router.get('/api/admin/quotations', requireAuth, async (req, res) => {
+  try {
+    const quotations = await listSofiaQuotations();
+    if (!quotations) {
+      return res.status(503).json({ error: 'Could not fetch quotation data from HotelInCloud' });
+    }
+
+    const total = quotations.length;
+    const booked = quotations.filter(q => q.is_booked).length;
+    const viewed = quotations.filter(q => q.status === 'read' || q.status === 'confirmed').length;
+    const sent = quotations.filter(q => q.status === 'sent').length;
+    const expired = quotations.filter(q => q.status === 'expired').length;
+    const conversionRate = total > 0 ? ((booked / total) * 100).toFixed(1) : '0.0';
+
+    // By hotel
+    const byHotel = {};
+    for (const q of quotations) {
+      if (!byHotel[q.hotel]) byHotel[q.hotel] = { total: 0, booked: 0, viewed: 0 };
+      byHotel[q.hotel].total++;
+      if (q.is_booked) byHotel[q.hotel].booked++;
+      if (q.status === 'read' || q.status === 'confirmed') byHotel[q.hotel].viewed++;
+    }
+
+    res.json({
+      total,
+      booked,
+      viewed,
+      sent,
+      expired,
+      conversion_rate: conversionRate,
+      by_hotel: byHotel,
+      recent: quotations.slice(0, 30).map(q => ({
+        id: q.id,
+        hotel: q.hotel,
+        guest: q.guest_name,
+        status: q.status,
+        is_booked: q.is_booked,
+        created: q.created_at,
+        check_in: q.check_in,
+        check_out: q.check_out,
+      })),
+    });
+  } catch (error) {
+    console.error('Error getting quotation data:', error);
+    res.status(500).json({ error: 'Failed to get quotation data' });
   }
 });
 

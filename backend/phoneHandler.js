@@ -138,6 +138,11 @@ export async function handlePhoneConnection(ws, req) {
   let setupMsg = null; // Stored at function scope so reconnect handler can access it
   let reconnecting = false; // Guard against concurrent reconnection attempts
 
+  // Sofia output tracking — used to flush sip-bridge RTP queue on interruption
+  let sofiaOutputActive = false;
+  let lastSofiaAudioTime = 0;
+  const SOFIA_AUDIO_GAP_MS = 200;
+
   // Save initial call record
   await savePhoneCallAsync({
     call_id: callId,
@@ -200,8 +205,8 @@ export async function handlePhoneConnection(ws, req) {
           },
           realtimeInputConfig: {
             automaticActivityDetection: {
-              startOfSpeechSensitivity: "START_SENSITIVITY_LOW", // reduce false triggers from phone line noise
-              endOfSpeechSensitivity: "END_SENSITIVITY_LOW", // wait longer for mid-sentence pauses
+              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
               prefixPaddingMs: 20,
               silenceDurationMs: 300,
             },
@@ -221,7 +226,7 @@ export async function handlePhoneConnection(ws, req) {
             ...getVoiceToolDeclarations().map(t => ({
               functionDeclarations: t.functionDeclarations
             })),
-            { googleSearch: {} } // Real-time web search during phone calls
+            { googleSearch: {} } // Supported on Live API (v1alpha) — only REST API (v1beta) blocks it
           ]
         }
       };
@@ -285,9 +290,10 @@ export async function handlePhoneConnection(ws, req) {
 
           // CRITICAL: Trigger Sofia to greet the caller (with GDPR disclosure first)
           // Gemini Live won't speak proactively - needs a trigger
+          const langName = { it: 'Italian', en: 'English', fr: 'French', de: 'German', es: 'Spanish', pt: 'Portuguese' }[disclosureLang] || 'Italian';
           const triggerGreeting = guestName
-            ? `[Phone call connected. Caller identified as ${guestName}. FIRST, briefly say: "${disclosure}" Then greet them warmly by name and ask how you can help with their booking.]`
-            : `[Phone call connected. FIRST, briefly say: "${disclosure}" Then greet the caller warmly in Italian and ask how you can help.]`;
+            ? `[Phone call connected. Caller identified as ${guestName}. FIRST, briefly say: "${disclosure}" Then greet them warmly by name and ask how you can help with their booking. Start in ${langName} but IMMEDIATELY switch to whatever language the caller speaks.]`
+            : `[Phone call connected. FIRST, briefly say: "${disclosure}" Then greet the caller warmly in ${langName} and ask how you can help. IMPORTANT: If the caller responds in a different language, IMMEDIATELY switch to their language for the rest of the call.]`;
           console.log(`[PHONE-WS] ${sessionId} Sending greeting trigger`);
           geminiSend({
             client_content: {
@@ -328,8 +334,16 @@ export async function handlePhoneConnection(ws, req) {
 
           // User transcription — accumulate fragments (preserve Gemini's word boundaries)
           if (content.inputTranscription?.text) {
-            const rawText = content.inputTranscription.text;
-            if (rawText) {
+            let rawText = content.inputTranscription.text;
+            // Filter control character artifacts (matches voice mode)
+            rawText = rawText.replace(/<ctrl\d+>/gi, '');
+            // Filter non-Latin script hallucinations (Malayalam, CJK, Arabic, etc.)
+            const nonLatinChars = rawText.replace(/[\u0000-\u024F\u1E00-\u1EFF\s\d.,!?'"():;\-–—…]/g, '');
+            const nonLatinRatio = nonLatinChars.length / (rawText.length || 1);
+            if (nonLatinRatio > 0.5) {
+              // More than 50% non-Latin chars — likely a transcription error, skip
+              console.log(`[PHONE-WS] ${sessionId} Dropping non-Latin transcript fragment (${Math.round(nonLatinRatio * 100)}%): "${rawText.substring(0, 40)}"`);
+            } else if (rawText) {
               currentUserBuffer += rawText;
               if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'user_transcript', text: currentUserBuffer.trim() }));
             }
@@ -338,8 +352,9 @@ export async function handlePhoneConnection(ws, req) {
           // Sofia transcription — accumulate fragments
           if (content.outputTranscription?.text) {
             let text = content.outputTranscription.text.trim();
-            // Strip leaked [suggestions: ...] lines from phone output
+            // Strip leaked [suggestions: ...] lines and control char artifacts from phone output
             text = text.replace(/\[suggestions?:.*$/gim, '').trim();
+            text = text.replace(/<ctrl\d+>/gi, '').trim();
             if (text) {
               currentAssistantBuffer += (currentAssistantBuffer ? ' ' : '') + text;
               outputTextThisTurn += text + ' ';
@@ -350,6 +365,9 @@ export async function handlePhoneConnection(ws, req) {
           if (content.modelTurn?.parts) {
             for (const part of content.modelTurn.parts) {
               if (part.inlineData?.data) {
+                // Mark Sofia as actively speaking (for echo suppression)
+                sofiaOutputActive = true;
+                lastSofiaAudioTime = Date.now();
                 // Record Sofia's audio (24kHz PCM from Gemini → resample to 16kHz)
                 try {
                   const rawBuf = Buffer.from(part.inlineData.data, 'base64');
@@ -367,7 +385,18 @@ export async function handlePhoneConnection(ws, req) {
             }
           }
 
+          // Barge-in: guest started speaking over Sofia — flush sip-bridge audio queue
+          if (content.interrupted) {
+            sofiaOutputActive = false; // Clear echo suppression
+            console.log(`[PHONE-WS] ${sessionId} Interrupted — flushing sip-bridge audio queue`);
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'interrupted' }));
+            }
+          }
+
           if (content.turnComplete) {
+            sofiaOutputActive = false; // Clear echo suppression — Sofia done speaking
+
             // Tool-call verification guard (5.1)
             const guardText = (currentAssistantBuffer || outputTextThisTurn || '').trim();
             if (!toolCallsMadeThisTurn && guardText) {
@@ -433,37 +462,49 @@ export async function handlePhoneConnection(ws, req) {
         if (msg.toolCall?.functionCalls?.length > 0) {
           toolCallsMadeThisTurn = true;
           const functionCalls = msg.toolCall.functionCalls;
-          console.log(`[PHONE-WS] ${sessionId} Tool calls:`, functionCalls.map(c => c.name).join(', '));
+          console.log(`[PHONE-WS] ${sessionId} Tool calls:`, functionCalls.map(c => `${c.name}(${JSON.stringify(c.args)})`).join(', '));
 
           // Tell sip-bridge a tool is running — pause silence detection
           if (ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'tool_active', active: true }));
           }
 
-          // Fill in missing quotation fields from phone context (email, phone, guest name)
+          // Fill in missing quotation fields from phone context (name FIRST, then email uses correct name)
           for (const call of functionCalls) {
             if (call.name === 'create_personalized_quotation') {
               // Inject caller phone number so WhatsApp follow-up works
               if (!call.args.phone_number && callerNumber) {
                 call.args.phone_number = callerNumber;
               }
-              // ALWAYS prefer phone index email — Gemini often hallucinates fake emails
+              // 1. Guest name: phone index wins, otherwise placeholder — Gemini hallucinates names
+              if (guestName) {
+                // Identified caller — always use phone index name
+                if (call.args.guest_name !== guestName) {
+                  console.log(`[PHONE-WS] ${sessionId} Overriding Gemini name "${call.args.guest_name}" with phone index: ${guestName}`);
+                }
+                call.args.guest_name = guestName;
+              } else {
+                // Unidentified caller — use placeholder (Gemini may hallucinate e.g. "John Smith")
+                const nameFillers = {
+                  it: 'Da completare', en: 'To be completed', fr: 'A completer',
+                  de: 'Noch auszufuellen', es: 'Por completar', pt: 'A completar'
+                };
+                const quotLang = (call.args.language || '').substring(0, 2).toLowerCase() || detectLanguageFromPhone(callerNumber);
+                console.log(`[PHONE-WS] ${sessionId} Unidentified caller — replacing "${call.args.guest_name}" with placeholder (lang=${quotLang})`);
+                call.args.guest_name = nameFillers[quotLang] || nameFillers.it;
+              }
+              // 2. Email: phone index wins, otherwise placeholder (uses corrected name above)
               const indexEmail = callerMatch?.guestEmail || guestProfile?._phoneMatch?.guestEmail;
               if (indexEmail) {
                 if (call.args.guest_email && call.args.guest_email !== indexEmail) {
                   console.log(`[PHONE-WS] ${sessionId} Overriding Gemini email "${call.args.guest_email}" with phone index: ${indexEmail}`);
                 }
                 call.args.guest_email = indexEmail;
-              } else if (!call.args.guest_email) {
-                // No phone index email and Gemini didn't provide one — use placeholder
+              } else {
+                // No real email — use placeholder. Booking link sent via WhatsApp, not email.
                 const safeName = (call.args.guest_name || 'guest').replace(/[^a-zA-Z0-9]/g, '.').toLowerCase();
                 call.args.guest_email = `${safeName}@phone.ognissantihotels.com`;
-                console.log(`[PHONE-WS] ${sessionId} Generated placeholder email: ${call.args.guest_email}`);
-              }
-              // Inject guest_name: phone index → fallback "To be filled"
-              if (!call.args.guest_name) {
-                call.args.guest_name = guestName || 'To be filled';
-                console.log(`[PHONE-WS] ${sessionId} Filled guest_name: ${call.args.guest_name}`);
+                console.log(`[PHONE-WS] ${sessionId} No index email — placeholder: ${call.args.guest_email}`);
               }
             }
           }
@@ -522,25 +563,8 @@ export async function handlePhoneConnection(ws, req) {
             }
           });
 
-          // After availability check, nudge Gemini to use quotation tool (not hallucinate)
-          if (functionCalls.some(c => c.name === 'check_room_availability')) {
-            const availResp = toolResponses.find(r => r.name === 'check_room_availability');
-            const hasRooms = availResp?.response?.success === 'true' || availResp?.response?.output?.includes('available');
-            if (hasRooms) {
-              // Delayed nudge so it doesn't interrupt the current response
-              setTimeout(() => {
-                geminiSend({
-                  client_content: {
-                    turns: [{
-                      role: 'user',
-                      parts: [{ text: '[SYSTEM REMINDER: When the guest wants to book or receive an offer, you MUST use the create_personalized_quotation tool. Do NOT just say you will send it — actually call the tool. The system will automatically send the booking link via WhatsApp after the quotation is created.]' }]
-                    }],
-                    turn_complete: true
-                  }
-                });
-              }, 500);
-            }
-          }
+          // Nudge moved INTO the tool response's spoken_summary (voiceShared.js)
+          // — sending a separate client_content turn interrupted Gemini mid-speech, causing double speaking
 
           // Auto-send WhatsApp via approved template after quotation — bypasses 24h window
           for (const call of functionCalls) {
@@ -556,7 +580,8 @@ export async function handlePhoneConnection(ws, req) {
                   const checkOut = call.args.check_out || '';
 
                   // Use approved booking_info template — works for ANY number, no 24h window needed
-                  const callerLang = detectLanguageFromPhone(callerNumber);
+                  // Language from tool call args (conversation language), fallback to phone country code
+                  const callerLang = (call.args.language || '').substring(0, 2).toLowerCase() || detectLanguageFromPhone(callerNumber);
                   const bookingTemplateMap = {
                     it: { name: 'booking_info', lang: 'it' },
                     en: { name: 'booking_info_en', lang: 'en' },
@@ -641,6 +666,17 @@ export async function handlePhoneConnection(ws, req) {
             geminiWs.on('message', handleGeminiMessage);
             geminiWs.on('close', handleGeminiClose);
             geminiWs.on('error', handleGeminiError);
+            // Prevent Gemini from re-greeting after reconnect (matches voice mode)
+            geminiSend({
+              client_content: {
+                turns: [{
+                  role: 'user',
+                  parts: [{ text: '[SYSTEM: Session resumed after connection refresh. Do NOT greet or introduce yourself again. Just continue the conversation naturally. Wait for the caller to speak.]' }]
+                }],
+                turn_complete: true
+              }
+            });
+
             console.log(`[PHONE-WS] ${sessionId} Reconnected successfully (reason: ${reason})`);
             return;
           } catch (err) {
@@ -706,7 +742,14 @@ export async function handlePhoneConnection(ws, req) {
         } else if (audioChunkCount % 200 === 0) {
           console.log(`[PHONE-WS] ${sessionId} Audio chunk #${audioChunkCount}`);
         }
-        // Forward to Gemini (exact same format as working voice mode)
+        // Let Gemini's automatic VAD handle speech detection and interruption.
+        // No server-side barge-in — Gemini sends content.interrupted when it detects user speech.
+        // We only track sofiaOutputActive to flush sip-bridge RTP on interruption.
+        if (sofiaOutputActive && Date.now() - lastSofiaAudioTime > SOFIA_AUDIO_GAP_MS) {
+          sofiaOutputActive = false;
+        }
+
+        // Forward all audio to Gemini — it handles VAD natively
         geminiSend({
           realtime_input: {
             media_chunks: [{
@@ -754,22 +797,33 @@ export async function handlePhoneConnection(ws, req) {
           if (endSample > maxSampleEnd) maxSampleEnd = endSample;
         }
 
-        // Build each track separately (overwrite, not additive — consecutive chunks from same source don't overlap)
-        const guestTrack = new Int16Array(maxSampleEnd);
+        // Build guest track with running position to prevent overlaps
+        const guestTrack = new Int16Array(maxSampleEnd + RECORD_SAMPLE_RATE * 10); // extra 10s buffer
+        let guestWritePos = 0;
         for (const chunk of guestChunks) {
-          const offset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
+          const naturalOffset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
+          const offset = Math.max(naturalOffset, guestWritePos);
+          if (offset + chunk.samples.length > guestTrack.length) break;
           guestTrack.set(chunk.samples, offset);
-        }
-        const sofiaTrack = new Int16Array(maxSampleEnd);
-        for (const chunk of sofiaChunks) {
-          const offset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
-          sofiaTrack.set(chunk.samples, offset);
+          guestWritePos = offset + chunk.samples.length;
         }
 
-        // Mix: sum both tracks with clipping protection
-        const mixed = new Int16Array(maxSampleEnd);
-        for (let i = 0; i < maxSampleEnd; i++) {
-          const sum = guestTrack[i] + sofiaTrack[i];
+        // Build Sofia track with running position to prevent overlaps
+        const sofiaTrack = new Int16Array(maxSampleEnd + RECORD_SAMPLE_RATE * 10);
+        let sofiaWritePos = 0;
+        for (const chunk of sofiaChunks) {
+          const naturalOffset = Math.floor(chunk.timeMs * RECORD_SAMPLE_RATE / 1000);
+          const offset = Math.max(naturalOffset, sofiaWritePos);
+          if (offset + chunk.samples.length > sofiaTrack.length) break;
+          sofiaTrack.set(chunk.samples, offset);
+          sofiaWritePos = offset + chunk.samples.length;
+        }
+
+        // Mix using actual track lengths
+        const totalSamples = Math.max(guestWritePos, sofiaWritePos);
+        const mixed = new Int16Array(totalSamples);
+        for (let i = 0; i < totalSamples; i++) {
+          const sum = (guestTrack[i] || 0) + (sofiaTrack[i] || 0);
           mixed[i] = Math.max(-32768, Math.min(32767, sum));
         }
 

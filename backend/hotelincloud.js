@@ -1388,6 +1388,114 @@ const createQuotationDirect = async (args) => {
   }
 };
 
+// --- Sofia Quotation Tracking ---
+
+const sofiaQuotationsCache = { data: null, timestamp: 0 };
+const SOFIA_QUOTATIONS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Fetches all quotations created by Sofia AI across all properties from HotelInCloud.
+ * Uses GET /api/internal/quotations/retrieve_quotations/{property_id}
+ * Filters by employee_name === 'Sofia AI'.
+ * Cached for 30 minutes.
+ *
+ * Status meanings from HIC:
+ *   sent     = quotation emailed to guest, not yet opened
+ *   read     = guest opened the quotation link
+ *   confirmed = guest booked via the quotation (also has reservation_id)
+ *   expired  = quotation past expiration_date without action (auto-set by HIC frontend)
+ *   deleted  = cancelled by hotel staff
+ *   draft    = saved but not sent
+ */
+async function listSofiaQuotations() {
+  if (sofiaQuotationsCache.data && Date.now() - sofiaQuotationsCache.timestamp < SOFIA_QUOTATIONS_CACHE_TTL) {
+    return sofiaQuotationsCache.data;
+  }
+
+  const authenticated = await authenticateHotelInCloud();
+  if (!authenticated) {
+    console.error('[QUOTATIONS] Cannot list — HIC auth failed');
+    return null;
+  }
+
+  const hicCookie = getHicSession().cookie;
+  const properties = Object.values(HOTELINCLOUD_PROPERTIES);
+  const allSofiaQuotations = [];
+
+  for (const prop of properties) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      const response = await fetch(
+        `https://app.hotelincloud.com/api/internal/quotations/retrieve_quotations/${prop.id}`,
+        { headers: { 'Cookie': hicCookie, 'Content-Type': 'application/json' }, signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`[QUOTATIONS] ${prop.name}: HTTP ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const quotations = data.quotations || [];
+
+      for (const q of quotations) {
+        let content = q.content;
+        if (typeof content === 'string') {
+          try { content = JSON.parse(content); } catch { continue; }
+        }
+        if (!content) continue;
+
+        // Filter: only Sofia AI quotations
+        if (content.employee_name !== 'Sofia AI') continue;
+
+        // Auto-expire: if status is 'sent' or 'read' and expiration_date is past, mark expired
+        let status = content.status;
+        if ((status === 'sent' || status === 'read') && content.expiration_date) {
+          const today = new Date().toISOString().split('T')[0];
+          if (content.expiration_date < today && status !== 'confirmed' && status !== 'deleted') {
+            status = 'expired';
+          }
+        }
+
+        const isBooked = status === 'confirmed' || !!q.reservation_id;
+
+        allSofiaQuotations.push({
+          id: q.id,
+          property_id: q.property_id,
+          hotel: prop.name,
+          guest_name: `${content.first_name || ''} ${content.last_name || ''}`.trim() || 'Unknown',
+          guest_email: content.email || null,
+          status,
+          is_booked: isBooked,
+          reservation_id: q.reservation_id || null,
+          created_at: q.create_time || content.create_time,
+          check_in: content.checkin,
+          check_out: content.checkout,
+          nights: content.n_nights || 0,
+          adults: content.adult_guests || 0,
+          children: content.child_guests || 0,
+          expiration_date: content.expiration_date || null,
+        });
+      }
+
+      console.log(`[QUOTATIONS] ${prop.name}: ${quotations.length} total, ${allSofiaQuotations.filter(q => q.property_id === prop.id).length} by Sofia`);
+    } catch (e) {
+      console.error(`[QUOTATIONS] ${prop.name}: ${e.message}`);
+    }
+  }
+
+  // Sort by created_at descending (newest first)
+  allSofiaQuotations.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  sofiaQuotationsCache.data = allSofiaQuotations;
+  sofiaQuotationsCache.timestamp = Date.now();
+
+  console.log(`[QUOTATIONS] Total Sofia AI quotations across all properties: ${allSofiaQuotations.length}`);
+  return allSofiaQuotations;
+}
+
 // --- Exports ---
 
 export {
@@ -1411,5 +1519,6 @@ export {
   fetchRealHotelPricesServer,
   lookupReservationDirect,
   addReservationNoteDirect,
-  createQuotationDirect
+  createQuotationDirect,
+  listSofiaQuotations
 };

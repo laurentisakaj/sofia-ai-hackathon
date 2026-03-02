@@ -7,7 +7,6 @@ import {
   phoneCallContexts,
   whatsappLastIncoming,
   healthMetrics,
-  bookingTrackingMap,
   BASE_URL,
 } from '../lib/config.js';
 import { readJsonFileAsync, writeJsonFileAsync, readEncryptedJsonFileAsync, writeEncryptedJsonFileAsync, withFileLock } from '../lib/encryption.js';
@@ -161,20 +160,10 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
           type: 'QUOTATION_CREATED',
           property: args.hotel_name || quotationResult.hotel_name,
           channel,
-          metadata: { guestEmail: args.guest_email, guestName: args.guest_name }
+          metadata: { guestEmail: args.guest_email, guestName: args.guest_name, quotationId: quotationResult.quotation_id }
         }).catch(() => {});
-        // Wrap booking link with tracking URL
-        if (quotationResult.booking_link) {
-          const trackingId = `trk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          bookingTrackingMap.set(trackingId, {
-            bookingLink: quotationResult.booking_link,
-            guestEmail: args.guest_email || null,
-            guestName: args.guest_name || null,
-            hotelName: args.hotel_name || quotationResult.hotel_name,
-            createdAt: new Date().toISOString(),
-          });
-          quotationResult.booking_link = `${BASE_URL}/api/track/booking/${trackingId}`;
-        }
+        // No tracking redirect — HotelInCloud tracks quotation views/bookings natively.
+        // The real quotation link (/q/...) is permanent and survives server restarts.
         generatedAttachments.push({ type: 'quotation', title: 'Quotation for ' + quotationResult.hotel_name, payload: quotationResult });
         // Save guest profile on quotation creation
         if (args.guest_email && args.guest_name) {

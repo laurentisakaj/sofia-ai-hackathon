@@ -47,8 +47,8 @@ const ImpactDashboard: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Conversations" value={data.total_conversations?.toLocaleString() || '0'} sub={`${data.conversations_today || 0} today`} />
         <MetricCard label="Languages" value={data.languages_served || 0} sub={Object.keys(data.languages || {}).join(', ')} />
-        <MetricCard label="Quotations" value={data.quotations_created || 0} sub={`${data.booking_clicks || 0} clicks`} color="blue" />
-        <MetricCard label="Click Rate" value={`${data.conversion_rate || 0}%`} sub="quotation to click" color="amber" />
+        <MetricCard label="Quotations" value={data.quotations_created || 0} sub={`${data.quotations_booked || 0} booked`} color="blue" />
+        <MetricCard label="Booking Rate" value={`${data.conversion_rate || 0}%`} sub="quotation to booking" color="amber" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

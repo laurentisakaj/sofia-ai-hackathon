@@ -24,6 +24,7 @@ import {
   ADMIN_LOGS_FILE,
   PHONE_CONTEXT_TTL,
   waMessageStatuses,
+  DATA_DIR,
 } from '../lib/config.js';
 import {
   readEncryptedJsonFileAsync,
@@ -398,6 +399,18 @@ router.post('/webhook', async (req, res) => {
         console.log(`[WHATSAPP] Injecting phone call context for ${from.slice(0, 4)}*** (${(recentCall.transcript || []).length} turns from call ${recentCall.call_id})`);
       }
 
+      // Load saved conversation history (survives PM2 restarts)
+      let savedHistory = [];
+      try {
+        const historyPath = path.join(DATA_DIR, 'wa_sessions', `${from}.json`);
+        const raw = await fs.promises.readFile(historyPath, 'utf8');
+        const saved = JSON.parse(raw);
+        if (Date.now() - saved.lastUsed < WHATSAPP_SESSION_TTL) {
+          savedHistory = saved.history || [];
+          console.log(`[WHATSAPP] Restored ${savedHistory.length} history turns for ${from.slice(0, 4)}***`);
+        }
+      } catch { /* No saved history — fresh session */ }
+
       const model = ai.getGenerativeModel({
         model: "gemini-3-flash-preview",
         systemInstruction: systemInstruction + `\n\nIMPORTANT CONTEXT: You are responding via WhatsApp to ${contactName} (phone: +${from}). Keep responses concise and mobile-friendly. Use short paragraphs. You can use the send_whatsapp_message tool if you need to send a follow-up with a link.
@@ -414,6 +427,7 @@ Exception: If the guest already provided all details (hotel, dates, guests), you
         tools: geminiToolDeclarations
       });
       const session = model.startChat({
+        history: savedHistory,
         generationConfig: { maxOutputTokens: 2000, temperature: 0.7 }
       });
       sessionData = { session, model, lastUsed: Date.now() };
@@ -637,6 +651,20 @@ Exception: If the guest already provided all details (hotel, dates, guests), you
       });
     } catch (logErr) {
       console.error('[WHATSAPP LOG] Error saving log:', logErr.message);
+    }
+
+    // Persist conversation history to disk (survives PM2 restarts)
+    try {
+      const history = await sessionData.session.getHistory();
+      const trimmed = history.slice(-20); // Keep last 20 turns
+      const historyDir = path.join(DATA_DIR, 'wa_sessions');
+      await fs.promises.mkdir(historyDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(historyDir, `${from}.json`),
+        JSON.stringify({ history: trimmed, lastUsed: Date.now(), contactName })
+      );
+    } catch (e) {
+      console.warn(`[WHATSAPP] History save error: ${e.message}`);
     }
 
     } finally {
