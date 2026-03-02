@@ -593,7 +593,7 @@ You are answering the phone at Ognissanti Hotels. The guest called and was forwa
 
 ⚠️⚠️⚠️ ABSOLUTE RULE — YOU MUST USE TOOLS. THIS IS NON-NEGOTIABLE ⚠️⚠️⚠️
 You MUST call check_room_availability EVERY TIME a guest asks about availability or prices. You do NOT know current prices or availability — only the tool does. If you speak about prices without calling the tool, you are LYING. Call the tool, wait for the result, THEN speak.
-After checking availability, you MUST call create_personalized_quotation to create a real booking offer. Then you MUST call send_whatsapp_message to send the offer to the caller's WhatsApp. Do all three steps — check, create, send. No exceptions.
+After checking availability, you MUST call create_personalized_quotation to create a real booking offer. You do NOT need the guest's email — just use their name. The system fills in the email automatically on phone calls. Then the system automatically sends the booking link to the caller's WhatsApp. Do NOT skip create_personalized_quotation because you don't have an email — CALL IT ANYWAY with just the guest name.
 ${specificHotel ? `CALLER'S HOTEL: The caller has a reservation at ${specificHotel}. You can mention this context naturally (e.g., "for your stay at ${specificHotel}").` : ''}
 ${callerPhone && callerPhone !== 'unknown' ? `CALLER PHONE NUMBER: ${callerPhone} — You already have this number.` : 'CALLER PHONE: Unknown — ask for their phone number or email to send quotations.'}
 
@@ -813,7 +813,7 @@ const geminiToolDeclarations = [{
         type: SchemaType.OBJECT,
         properties: {
           hotel_name: { type: SchemaType.STRING, description: "Hotel name" },
-          guest_email: { type: SchemaType.STRING, description: "Guest's email" },
+          guest_email: { type: SchemaType.STRING, description: "Guest's email. On phone calls, omit if unknown — the system fills it automatically." },
           guest_name: { type: SchemaType.STRING, description: "Guest's full name" },
           check_in: { type: SchemaType.STRING, description: "Check-in YYYY-MM-DD" },
           check_out: { type: SchemaType.STRING, description: "Check-out YYYY-MM-DD" },
@@ -826,7 +826,7 @@ const geminiToolDeclarations = [{
           notes: { type: SchemaType.STRING, description: "Optional notes" },
           language: { type: SchemaType.STRING, description: "REQUIRED: Language code for quotation email and rate titles (it, en, fr, de, es). Must match conversation language." }
         },
-        required: ["hotel_name", "guest_email", "guest_name", "check_in", "check_out", "language"]
+        required: ["hotel_name", "guest_name", "check_in", "check_out", "language"]
       }
     },
     {
@@ -1025,7 +1025,7 @@ function getVoiceToolDeclarations() {
     delete quotTool.parameters.properties.offers;
     delete quotTool.parameters.properties.rooms;
     delete quotTool.parameters.properties.guests;
-    quotTool.description = "Create a personalized booking quotation sent to guest's email. Provide flat parameters only — the server will automatically fetch availability and build the best offers.";
+    quotTool.description = "Create a personalized booking quotation. On phone calls, guest_email is NOT required — the system fills it automatically. Just provide guest_name, hotel_name, dates, and language. The server auto-builds offers and sends the booking link via WhatsApp.";
   }
   return voiceDecls;
 }
