@@ -459,9 +459,10 @@ export async function handlePhoneConnection(ws, req) {
                 call.args.guest_email = `${safeName}@phone.ognissantihotels.com`;
                 console.log(`[PHONE-WS] ${sessionId} Generated placeholder email: ${call.args.guest_email}`);
               }
-              // Inject guest_name from phone index if missing
-              if (!call.args.guest_name && guestName) {
-                call.args.guest_name = guestName;
+              // Inject guest_name: phone index → fallback "To be filled"
+              if (!call.args.guest_name) {
+                call.args.guest_name = guestName || 'To be filled';
+                console.log(`[PHONE-WS] ${sessionId} Filled guest_name: ${call.args.guest_name}`);
               }
             }
           }

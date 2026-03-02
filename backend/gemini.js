@@ -814,7 +814,7 @@ const geminiToolDeclarations = [{
         properties: {
           hotel_name: { type: SchemaType.STRING, description: "Hotel name" },
           guest_email: { type: SchemaType.STRING, description: "Guest's email. On phone calls, omit if unknown — the system fills it automatically." },
-          guest_name: { type: SchemaType.STRING, description: "Guest's full name" },
+          guest_name: { type: SchemaType.STRING, description: "Guest's full name. On phone calls, if unknown use the caller's name from the conversation or omit — the system fills it." },
           check_in: { type: SchemaType.STRING, description: "Check-in YYYY-MM-DD" },
           check_out: { type: SchemaType.STRING, description: "Check-out YYYY-MM-DD" },
           adults: { type: SchemaType.NUMBER, description: "Adult count" },
@@ -826,7 +826,7 @@ const geminiToolDeclarations = [{
           notes: { type: SchemaType.STRING, description: "Optional notes" },
           language: { type: SchemaType.STRING, description: "REQUIRED: Language code for quotation email and rate titles (it, en, fr, de, es). Must match conversation language." }
         },
-        required: ["hotel_name", "guest_name", "check_in", "check_out", "language"]
+        required: ["hotel_name", "check_in", "check_out", "language"]
       }
     },
     {
