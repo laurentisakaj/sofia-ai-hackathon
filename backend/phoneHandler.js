@@ -1,5 +1,7 @@
 // backend/phoneHandler.js — Extracted /ws/phone WebSocket handler
 import { WebSocket } from 'ws';
+import fs from 'fs';
+import path from 'path';
 import {
   healthMetrics,
 } from '../lib/config.js';
@@ -12,6 +14,55 @@ import { detectLanguageFromPhone } from '../lib/language.js';
 import { sendWhatsAppTemplate } from './whatsapp.js';
 import { saveGuestProfileAsync, getGuestProfileByNameAsync, getGuestProfileByPhoneAsync } from './guests.js';
 import { trimToolResultForVoice, autoBuiltOffers, HIC_TOOLS } from './voiceShared.js';
+
+// ---------------------------------------------------------------------------
+// Call audio recording — mix guest + Sofia into single WAV
+// ---------------------------------------------------------------------------
+
+const RECORDINGS_DIR = path.join(process.cwd(), 'sofia_data', 'call_recordings');
+const RECORD_SAMPLE_RATE = 16000; // Mix everything at 16kHz
+
+/** Resample PCM 24kHz → 16kHz (2:3 ratio) with linear interpolation */
+function resample24kTo16k(input24k) {
+  const ratio = 24000 / 16000; // 1.5
+  const outLen = Math.floor(input24k.length / ratio);
+  const output = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcPos = i * ratio;
+    const idx = Math.floor(srcPos);
+    const frac = srcPos - idx;
+    const s0 = input24k[idx] || 0;
+    const s1 = input24k[Math.min(idx + 1, input24k.length - 1)] || 0;
+    output[i] = Math.round(s0 + frac * (s1 - s0));
+  }
+  return output;
+}
+
+/** Write a WAV file header + PCM data (mono 16-bit 16kHz) */
+function writeWav(filePath, pcmBuffer) {
+  const numSamples = pcmBuffer.length;
+  const byteRate = RECORD_SAMPLE_RATE * 2; // 16-bit mono
+  const dataSize = numSamples * 2;
+  const header = Buffer.alloc(44);
+
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + dataSize, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16); // PCM chunk size
+  header.writeUInt16LE(1, 20);  // PCM format
+  header.writeUInt16LE(1, 22);  // mono
+  header.writeUInt32LE(RECORD_SAMPLE_RATE, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(2, 32);  // block align
+  header.writeUInt16LE(16, 34); // bits per sample
+  header.write('data', 36);
+  header.writeUInt32LE(dataSize, 40);
+
+  const dataBuffer = Buffer.from(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.byteLength);
+  fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+  fs.writeFileSync(filePath, Buffer.concat([header, dataBuffer]));
+}
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
 const PHONE_SESSION_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
@@ -69,6 +120,12 @@ export async function handlePhoneConnection(ws, req) {
 
   const sessionId = `phone-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   console.log(`[PHONE-WS] New connection: ${sessionId} from ${callerNumber}${guestName ? ` (${guestName})` : ''}`);
+
+  // Audio recording — collect both streams for mixed WAV
+  const guestPcmChunks = [];  // 16kHz Int16Array chunks from sip-bridge
+  const sofiaPcmChunks = [];  // 24kHz base64 from Gemini, will resample to 16kHz
+  let guestSampleCount = 0;
+  let sofiaSampleCount = 0;
 
   // Track call for logging — accumulate fragments into complete turns
   const transcriptParts = { user: [], assistant: [] };
@@ -294,11 +351,20 @@ export async function handlePhoneConnection(ws, req) {
           // Audio output
           if (content.modelTurn?.parts) {
             for (const part of content.modelTurn.parts) {
-              if (part.inlineData?.data && ws.readyState === 1) {
-                ws.send(JSON.stringify({
-                  type: 'audio',
-                  data: part.inlineData.data
-                }));
+              if (part.inlineData?.data) {
+                // Record Sofia's audio (24kHz PCM from Gemini)
+                try {
+                  const rawBuf = Buffer.from(part.inlineData.data, 'base64');
+                  const samples = new Int16Array(rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength));
+                  sofiaPcmChunks.push(samples);
+                  sofiaSampleCount += samples.length;
+                } catch {}
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify({
+                    type: 'audio',
+                    data: part.inlineData.data
+                  }));
+                }
               }
             }
           }
@@ -591,6 +657,13 @@ export async function handlePhoneConnection(ws, req) {
 
       if (message.type === 'audio' && message.content) {
         audioChunkCount++;
+        // Record guest audio
+        try {
+          const pcmBuf = Buffer.from(message.content, 'base64');
+          const samples = new Int16Array(pcmBuf.buffer.slice(pcmBuf.byteOffset, pcmBuf.byteOffset + pcmBuf.byteLength));
+          guestPcmChunks.push(samples);
+          guestSampleCount += samples.length;
+        } catch {}
         // Detailed logging for first 5 chunks
         if (audioChunkCount <= 5) {
           const buf = Buffer.from(message.content, 'base64');
@@ -642,6 +715,38 @@ export async function handlePhoneConnection(ws, req) {
       if (transcriptParts.assistant[i]) transcript.push({ role: 'assistant', text: transcriptParts.assistant[i] });
     }
 
+    // Mix and save call recording as WAV
+    let recordingPath = null;
+    try {
+      if (guestSampleCount > 0 || sofiaSampleCount > 0) {
+        // Concatenate guest chunks (already 16kHz)
+        const guestAll = new Int16Array(guestSampleCount);
+        let gOff = 0;
+        for (const chunk of guestPcmChunks) { guestAll.set(chunk, gOff); gOff += chunk.length; }
+
+        // Concatenate Sofia chunks (24kHz) and resample to 16kHz
+        const sofiaAll24k = new Int16Array(sofiaSampleCount);
+        let sOff = 0;
+        for (const chunk of sofiaPcmChunks) { sofiaAll24k.set(chunk, sOff); sOff += chunk.length; }
+        const sofiaAll = resample24kTo16k(sofiaAll24k);
+
+        // Mix: overlay both streams (additive with clamp)
+        const mixLen = Math.max(guestAll.length, sofiaAll.length);
+        const mixed = new Int16Array(mixLen);
+        for (let i = 0; i < mixLen; i++) {
+          const g = i < guestAll.length ? guestAll[i] : 0;
+          const s = i < sofiaAll.length ? sofiaAll[i] : 0;
+          mixed[i] = Math.max(-32768, Math.min(32767, g + s));
+        }
+
+        recordingPath = path.join(RECORDINGS_DIR, `${callId}.wav`);
+        writeWav(recordingPath, mixed);
+        console.log(`[PHONE-WS] ${sessionId} Call recording saved: ${recordingPath} (${(mixLen / RECORD_SAMPLE_RATE).toFixed(1)}s)`);
+      }
+    } catch (recErr) {
+      console.error(`[PHONE-WS] ${sessionId} Recording save error:`, recErr.message);
+    }
+
     const callData = {
       call_id: callId,
       caller: callerNumber,
@@ -650,7 +755,8 @@ export async function handlePhoneConnection(ws, req) {
       ended_at: new Date().toISOString(),
       duration_seconds: duration,
       status: 'ended',
-      transcript
+      transcript,
+      recordingPath
     };
     await savePhoneCallAsync(callData);
     console.log(`[PHONE-WS] ${sessionId} Call saved: ${duration}s, ${transcript.length} turns`);

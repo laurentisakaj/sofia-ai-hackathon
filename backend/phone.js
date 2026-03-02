@@ -22,6 +22,7 @@ import {
   withFileLock
 } from '../lib/encryption.js';
 
+import fs from 'fs';
 import { detectLanguageFromPhone } from '../lib/language.js';
 import { sendEmail } from '../lib/auth.js';
 import { sendWhatsAppTemplate } from './whatsapp.js';
@@ -174,7 +175,16 @@ ${toolsSummary}
 Sofia Phone Agent`;
 
   try {
-    await sendEmail('laurent@ognissantihotels.com', emailSubject, emailBody, { fromName: 'Sofia Phone Agent' });
+    // Attach call recording WAV if available
+    const emailOpts = { fromName: 'Sofia Phone Agent' };
+    if (callData.recordingPath && fs.existsSync(callData.recordingPath)) {
+      emailOpts.attachments = [{
+        filename: `sofia-call-${call_id}.wav`,
+        path: callData.recordingPath
+      }];
+      console.log(`[PHONE POST-CALL] ${call_id}: Attaching recording (${(fs.statSync(callData.recordingPath).size / 1024 / 1024).toFixed(1)}MB)`);
+    }
+    await sendEmail('laurent@ognissantihotels.com', emailSubject, emailBody, emailOpts);
     console.log(`[PHONE POST-CALL] ${call_id}: Email sent to laurent@ognissantihotels.com`);
   } catch (err) {
     console.error(`[PHONE POST-CALL] ${call_id}: Failed to email:`, err.message);
