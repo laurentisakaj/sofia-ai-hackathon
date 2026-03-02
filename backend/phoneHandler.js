@@ -371,13 +371,23 @@ export async function handlePhoneConnection(ws, req) {
             const guardText = (currentAssistantBuffer || outputTextThisTurn || '').trim();
             if (!toolCallsMadeThisTurn && guardText) {
               const actionPhrases = [
-                "ho inviato", "i've sent", "i have sent", "i just sent",
-                "ho prenotato", "i've booked", "i have booked",
-                "ho creato", "i've created", "i have created",
-                "ho cercato", "i've searched", "i have searched",
-                "ho controllato", "i've checked", "i have checked",
-                "ecco le disponibilità", "here are the available",
-                "ho trovato", "i've found", "i have found"
+                // Italian
+                "ho inviato", "le invio", "ti invio", "ti mando", "le mando",
+                "ho mandato", "invio su whatsapp", "mando su whatsapp",
+                "su whatsapp", "via whatsapp", "sul suo whatsapp",
+                "ho prenotato", "ho creato", "ho cercato", "ho controllato",
+                "ecco le disponibilità", "ho trovato",
+                "le ho inviato", "le ho mandato", "glielo mando",
+                "gliela invio", "gliela mando",
+                // English
+                "i've sent", "i have sent", "i just sent", "i'm sending",
+                "i'll send", "sending you", "send it to your whatsapp",
+                "on whatsapp", "via whatsapp", "to your whatsapp",
+                "i've booked", "i have booked",
+                "i've created", "i have created",
+                "i've searched", "i have searched",
+                "i've checked", "i have checked",
+                "here are the available", "i've found", "i have found"
               ];
               const lowerText = guardText.toLowerCase();
               if (actionPhrases.some(phrase => lowerText.includes(phrase))) {
@@ -509,6 +519,26 @@ export async function handlePhoneConnection(ws, req) {
               function_responses: toolResponses
             }
           });
+
+          // After availability check, nudge Gemini to use quotation tool (not hallucinate)
+          if (functionCalls.some(c => c.name === 'check_room_availability')) {
+            const availResp = toolResponses.find(r => r.name === 'check_room_availability');
+            const hasRooms = availResp?.response?.success === 'true' || availResp?.response?.output?.includes('available');
+            if (hasRooms) {
+              // Delayed nudge so it doesn't interrupt the current response
+              setTimeout(() => {
+                geminiSend({
+                  client_content: {
+                    turns: [{
+                      role: 'user',
+                      parts: [{ text: '[SYSTEM REMINDER: When the guest wants to book or receive an offer, you MUST use the create_personalized_quotation tool. Do NOT just say you will send it — actually call the tool. The system will automatically send the booking link via WhatsApp after the quotation is created.]' }]
+                    }],
+                    turn_complete: true
+                  }
+                });
+              }, 500);
+            }
+          }
 
           // Auto-send WhatsApp via approved template after quotation — bypasses 24h window
           for (const call of functionCalls) {
