@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createBlob, decode, decodeAudioData } from './orb/utils';
 import './orb/visual-canvas';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin, Thermometer, Coffee, Lock, Wifi, Droplets, Tv, Eye } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin, Thermometer, Coffee, Lock, Wifi, Droplets, Tv, Eye, Snowflake, Clock, Church, Sun, Moon, KeyRound, Info, AlertTriangle, Star, Phone } from 'lucide-react';
 
 /// <reference types="vite/client" />
 
@@ -29,6 +29,24 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     const [speechSpeed, setSpeechSpeed] = useState<'normal' | 'slow' | 'fast'>('normal');
     const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
     const [needsGesture, setNeedsGesture] = useState(false);
+
+    // Visual assist floating cards
+    type VisualAssistCard = {
+        id: number;
+        type: 'steps' | 'buttons' | 'info';
+        title: string;
+        items: Array<{ icon: string; text: string; detail?: string | null; action?: string | null }>;
+        auto_dismiss: number;
+        visible: boolean;
+    };
+    const [assistCards, setAssistCards] = useState<VisualAssistCard[]>([]);
+    const assistIdRef = useRef(0);
+
+    const ICON_MAP: Record<string, any> = {
+        snowflake: Snowflake, wifi: Wifi, lock: Lock, tv: Tv, phone: Phone,
+        map: MapPin, clock: Clock, church: Church, coffee: Coffee, sun: Sun,
+        moon: Moon, key: KeyRound, info: Info, warning: AlertTriangle, star: Star,
+    };
 
     // Visual identification state — multiple live AR tags
     type IdentMarker = { label: string; x: number; y: number; step: number | null };
@@ -378,6 +396,17 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                         nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
                     }
                 } else if (msg.type === 'tool_result') {
+                    // Check for visual_assist attachments
+                    const vaAttach = (msg.attachments || []).find((a: any) => a.type === 'visual_assist');
+                    if (vaAttach?.payload) {
+                        const cardId = ++assistIdRef.current;
+                        const card: VisualAssistCard = { id: cardId, visible: true, ...vaAttach.payload };
+                        setAssistCards(prev => [...prev.slice(-2), card]);
+                        setTimeout(() => {
+                            setAssistCards(prev => prev.map(c => c.id === cardId ? { ...c, visible: false } : c));
+                            setTimeout(() => setAssistCards(prev => prev.filter(c => c.id !== cardId)), 400);
+                        }, (card.auto_dismiss || 12) * 1000);
+                    }
                     pendingToolsRef.current.push({
                         name: msg.name,
                         result: msg.result,
@@ -1125,6 +1154,54 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                         <X size={14} />
                     </button>
                     <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">Screen</div>
+                </div>
+            )}
+
+            {/* Visual assist floating cards */}
+            {assistCards.length > 0 && (
+                <div className="absolute bottom-44 left-4 right-4 z-20 flex flex-col items-center gap-2 pointer-events-auto">
+                    {assistCards.map(card => {
+                        const isSteps = card.type === 'steps';
+                        return (
+                            <div
+                                key={card.id}
+                                className={`w-full max-w-sm bg-slate-800/90 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden transition-all duration-400 ${card.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+                            >
+                                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700/50">
+                                    <h3 className="text-white text-sm font-semibold">{card.title}</h3>
+                                    <button onClick={() => setAssistCards(prev => prev.filter(c => c.id !== card.id))} className="text-slate-400 hover:text-white p-0.5"><X size={14} /></button>
+                                </div>
+                                <div className="px-4 py-2.5 space-y-2">
+                                    {card.items.map((item, i) => {
+                                        const IconComp = ICON_MAP[item.icon] || Info;
+                                        const isButton = !!item.action;
+                                        const Tag = isButton ? 'button' : 'div';
+                                        return (
+                                            <Tag
+                                                key={i}
+                                                className={`flex items-start gap-3 w-full text-left ${isButton ? 'bg-slate-700/50 hover:bg-slate-600/50 active:scale-[0.98] rounded-xl px-3 py-2 transition-all cursor-pointer' : 'py-1'}`}
+                                                {...(isButton ? {
+                                                    onClick: () => {
+                                                        if (item.action === 'call_reception') window.open('tel:+390550131776');
+                                                        else if (item.action === 'open_map') window.open('https://maps.google.com/?q=' + encodeURIComponent(item.text));
+                                                    }
+                                                } : {})}
+                                            >
+                                                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5 ${isButton ? 'bg-teal-500/20 text-teal-400' : 'bg-slate-600/50 text-slate-300'}`}>
+                                                    {isSteps ? <span className="text-xs font-bold">{i + 1}</span> : <IconComp size={14} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-white text-[13px] leading-snug">{item.text}</p>
+                                                    {item.detail && <p className="text-slate-400 text-[11px] mt-0.5">{item.detail}</p>}
+                                                </div>
+                                                {isButton && <span className="text-teal-400 text-xs mt-1">{'>'}</span>}
+                                            </Tag>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
