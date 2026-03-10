@@ -4,7 +4,7 @@
 Sofia AI — Live Multimodal Concierge for Hotels
 
 ## Short Description (Tagline)
-A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 18 live tools with Google Search grounding. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
+A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 23 live tools with Google Search grounding. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
 
 ---
 
@@ -22,7 +22,7 @@ Sofia is a **production AI concierge** running 24/7 across our 6 Florence hotels
 
 **🎙️ Voice Mode:** Real-time conversations using Gemini Live API. Sofia adapts her speaking pace and tone in real-time based on the guest's emotional state via affective dialog. Guests can adjust speech speed to normal, slow, or fast.
 
-**📹 Video Mode:** Voice plus live camera and GPS. Guests share their camera for menu translation, landmark identification, and map reading. GPS location enables Sofia to give walking directions from the guest's exact position and recommend nearby restaurants, pharmacies, and attractions relative to where they are standing.
+**📹 Video Mode + Sofia Lens:** Voice plus live camera and GPS. Guests share their camera for menu translation, landmark identification, and map reading. **Sofia Lens** adds AR-powered visual identification — point your phone at a building and an overlay appears with its name and history, point at a restaurant menu and Sofia translates it live. GPS location enables Sofia to give walking directions from the guest's exact position and recommend nearby restaurants, pharmacies, and attractions relative to where they are standing.
 
 **📞 Phone Calls:** Answers actual hotel phone calls via a custom Node.js SIP/RTP bridge to Gemini Live, converting G.711 audio in real-time. When reception is closed, no call goes to voicemail. Sofia greets returning callers by name, already knowing their reservation details.
 
@@ -40,7 +40,7 @@ Sofia embodies all three modalities the Gemini Live API was built for.
 
 **She Hears** guest speech in real-time, transcribing and understanding context across a full conversation, recognizing returning callers by phone number and matching them to their reservation before they identify themselves.
 
-**She Sees** when guests share their camera or screen during video sessions. A guest pointing their phone at a restaurant menu gets an instant translation. Someone showing a confusing train ticket gets step-by-step guidance. Video frames are streamed at _1 FPS_ as JPEG to Gemini Live for continuous visual understanding without interrupting the conversation. Combined with GPS coordinates streamed alongside audio and video, Sofia knows both _what_ the guest is looking at _and where_ they are, enabling directions like "turn left at the end of this street, your hotel is 200 meters ahead."
+**She Sees** when guests share their camera or screen during video sessions. A guest pointing their phone at a restaurant menu gets an instant translation. Someone showing a confusing train ticket gets step-by-step guidance. Video frames are streamed at _1 FPS_ as JPEG to Gemini Live for continuous visual understanding without interrupting the conversation. **Sofia Lens** takes this further: when an object or landmark is identified, an AR overlay tag appears on screen with the name, description, and relevant actions — transforming the camera into a real-time city guide. Combined with GPS coordinates streamed alongside audio and video, Sofia knows both _what_ the guest is looking at _and where_ they are, enabling directions like "turn left at the end of this street, your hotel is 200 meters ahead."
 
 ---
 
@@ -50,7 +50,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 ---
 
-## The 18 Live Tools Sofia Executes in Real-Time
+## The 23 Live Tools Sofia Executes in Real-Time
 
 1. **Room Availability:** Live pricing across all 6 properties via HotelInCloud API, with rate comparison vs Booking.com
 2. **Personalized Quotations:** Creates real booking offers with payment links, sent to guest email
@@ -67,9 +67,14 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 13. **Hotel Location:** Maps, verified entrance photos, and turn-by-turn directions for all 6 properties
 14. **Florence Events:** Local calendar for concerts, exhibitions, and markets
 15. **Support Email:** Sends messages directly to hotel reception on the guest's behalf
-16. **Human Handoff:** Provides direct staff contact info when the situation requires a human
+16. **Human Handoff:** Provides direct staff contact info and transfers the conversation to a human when the situation requires it
 17. **Knowledge Base Updates:** Proposes new knowledge entries when guests ask questions Sofia cannot answer from verified sources
 18. **Proactive Opt-In:** Enables the Trip Intelligence Engine for guests who agree to receive personalized tips — restaurant suggestions, weather alerts, and daily briefings delivered proactively via WhatsApp or Web Push
+19. **Visual Identification (Sofia Lens):** AR-powered landmark, menu, and object identification via the guest's live camera feed — point your phone at a building and Sofia tells you its history, point at a menu and she translates it
+20. **Hotel Comparison:** Side-by-side comparison of properties with pricing, amenities, location, and ratings to help guests choose the right hotel for their needs
+21. **Guest Preferences:** Persists guest preferences (room type, dietary needs, interests) across channels and sessions — Sofia remembers what matters to each guest
+22. **Cross-Channel WhatsApp:** Sends WhatsApp messages to guests from any channel, with automatic template fallback for guests outside the 24-hour conversation window
+23. **Human Assistance Escalation:** Escalates complex issues to human staff with full conversation context, ensuring nothing is lost in the handoff
 
 ---
 
@@ -211,7 +216,7 @@ const samples = new Int16Array(fresh);
 
 **Gemini transcription artifacts:** The Live API occasionally emits control character sequences like `<ctrl46>` as output transcription tokens after turn completion. These required filtering at the transcription handler level before sending to the frontend.
 
-**Context window management:** With 18 tools, a large system prompt, and long guest conversations, the context window fills quickly during phone calls. We implemented sliding window compression:
+**Context window management:** With 23 tools, a large system prompt, and long guest conversations, the context window fills quickly during phone calls. We implemented sliding window compression:
 
 ```javascript
 contextWindowCompression: {
@@ -289,6 +294,7 @@ Predictive room assignment based on guest preference history analyzed across mul
 - SIP/RTP — telephone call handling
 - G.711 μ-law — telephone audio codec
 - RSA-OAEP + AES-128-GCM — WhatsApp Flow encryption
+- Web Push (VAPID) — proactive browser notifications
 
 ## Category
 
