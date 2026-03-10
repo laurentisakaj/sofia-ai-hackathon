@@ -1,20 +1,12 @@
-# DevPost Submission — Full Text
-
-## Project Name
 Sofia AI — Live Multimodal Concierge for Hotels
 
-## Short Description (Tagline)
 A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 23 live tools with Google Search grounding. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
-
----
 
 ## Inspiration
 
 We run 6 hotels and our reception desks close at night. Guests calling after hours would reach voicemail: frustrated travelers needing directions, late check-in instructions, or last-minute booking changes. We wanted an AI that could actually _do things_, not just chat. Sofia needed to answer real phone calls, check live availability, create booking offers with payment links, and speak naturally in the guest's language.
 
 When Google released the Gemini Live API with native audio and non-blocking function calls, we saw the opportunity to build something that feels like talking to a real concierge, one who can multitask, remember guests, and never sleep.
-
----
 
 ## What it does
 
@@ -30,9 +22,7 @@ Sofia is a **production AI concierge** running 24/7 across our 6 Florence hotels
 
 **📱 WhatsApp:** Full integration with Meta Cloud API including 4 native interactive Flows for booking, check-in, tour selection, and guest feedback. Sofia handles incoming WhatsApp messages with the same intelligence as web chat, including voice note transcription, image understanding, and rich content delivery. After phone calls, she automatically sends a follow-up WhatsApp with the booking link. For guests outside the 24-hour conversation window, she uses approved UTILITY message templates to reach them proactively.
 
----
-
-## See, Hear, and Speak: True Multimodal
+### See, Hear, and Speak: True Multimodal
 
 Sofia embodies all three modalities the Gemini Live API was built for.
 
@@ -42,15 +32,11 @@ Sofia embodies all three modalities the Gemini Live API was built for.
 
 **She Sees** when guests share their camera or screen during video sessions. A guest pointing their phone at a restaurant menu gets an instant translation. Someone showing a confusing train ticket gets step-by-step guidance. Video frames are streamed at _1 FPS_ as JPEG to Gemini Live for continuous visual understanding without interrupting the conversation. **Sofia Lens** takes this further: when an object or landmark is identified, an AR overlay tag appears on screen with the name, description, and relevant actions — transforming the camera into a real-time city guide. Combined with GPS coordinates streamed alongside audio and video, Sofia knows both _what_ the guest is looking at _and where_ they are, enabling directions like "turn left at the end of this street, your hotel is 200 meters ahead."
 
----
-
-## Sofia's Persona
+### Sofia's Persona
 
 Sofia is not a generic assistant. She has a defined identity: a warm, professional Florentine concierge who knows the city deeply, speaks the guest's language, and takes pride in making every stay memorable. Her responses reflect local knowledge baked into a curated knowledge base that hotel staff maintain through a protected admin panel. She never invents hotel policies, prices, or availability. Every factual claim is grounded in live API data or staff-verified knowledge, preventing hallucinations on the most sensitive topics: pricing, availability, and check-in procedures.
 
----
-
-## The 23 Live Tools Sofia Executes in Real-Time
+### The 23 Live Tools Sofia Executes in Real-Time
 
 1. **Room Availability:** Live pricing across all 6 properties via HotelInCloud API, with rate comparison vs Booking.com
 2. **Personalized Quotations:** Creates real booking offers with payment links, sent to guest email
@@ -76,9 +62,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 22. **Cross-Channel WhatsApp:** Sends WhatsApp messages to guests from any channel, with automatic template fallback for guests outside the 24-hour conversation window
 23. **Human Assistance Escalation:** Escalates complex issues to human staff with full conversation context, ensuring nothing is lost in the handoff
 
----
-
-## Intelligence and Personalization
+### Intelligence and Personalization
 
 **Caller Recognition:** A phone index built from all active reservations means that when a guest calls, Sofia greets them by name and references their booking before they say a word.
 
@@ -98,9 +82,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 **Trip Intelligence Engine:** Sofia's most ambitious feature. A background engine evaluates 5 trigger types every 15 minutes per active guest: _location-aware_ (GPS proximity to 50 curated Florence POIs), _weather-reactive_ (rain or heat alerts with indoor alternatives), _time-contextual_ (lunch and dinner suggestions), _trip-phase_ (orientation on day 1, logistics on checkout day), and _behavioral_ (follow-ups on expressed interests from past conversations). Each morning at 08:00, opted-in guests receive a personalized Daily Briefing with weather, 3 tailored picks, and a rotating hidden gem. Messages are generated by Gemini from trigger context and delivered via WhatsApp (primary) or Web Push (fallback). Strict guardrails enforce a maximum of 3 messages per day, 2-hour minimum gaps, quiet hours from 22:00 to 07:30, and no repeat suggestions. No hotel AI does this — most chatbots answer questions; Sofia anticipates them.
 
----
-
-## Grounding and Hallucination Prevention
+### Grounding and Hallucination Prevention
 
 This is a production system handling real money and real guests. Sofia is strictly grounded at every level.
 
@@ -118,9 +100,7 @@ if (actionPhrases.some(phrase => outputText.toLowerCase().includes(phrase)) && !
 }
 ```
 
----
-
-## Staff and Operations
+### Staff and Operations
 
 **Post-call email transcripts:** Every phone call is transcribed and emailed to hotel management automatically when the call ends.
 
@@ -137,8 +117,6 @@ if (actionPhrases.some(phrase => outputText.toLowerCase().includes(phrase)) && !
 **Revenue attribution:** Every quotation Sofia creates is tracked through the full funnel — creation, click, and booking — with channel attribution (web, WhatsApp, or phone). The admin dashboard shows conversion rates per hotel and per channel, giving management clear visibility into Sofia's direct revenue impact.
 
 **WhatsApp Interactive Flows:** Native WhatsApp forms for structured booking, check-in, tour selection, and guest feedback, all powered by server-side data exchange encrypted with RSA-OAEP and AES-128-GCM.
-
----
 
 ## How we built it
 
@@ -164,7 +142,7 @@ Phone → G.711 μ-law 8kHz
 
 The resampling uses a weighted average kernel where the output sample at position \\(n\\) is:
 
-$y[n] = \frac{x[3n] + 2x[3n+1] + x[3n+2]}{4}$
+$ y[n] = \frac{x[3n] + 2x[3n+1] + x[3n+2]}{4} $
 
 This matches the algorithm used by proven telephony systems and produces clean audio where naive approaches create audible artifacts.
 
@@ -189,9 +167,7 @@ setInterval(() => {
 
 Gemini Live disconnections trigger automatic reconnection with session resumption handles, preserving full conversation context across reconnects with up to 3 retry attempts using exponential backoff. Empty Gemini responses auto-retry with a fresh session. All public endpoints are rate-limited: 20 requests per minute for chat, 10 per hour for reservation lookup, 5 per hour for support messages. A 25-second timeout prevents infinite hangs on slow tool calls. When HotelInCloud APIs are unavailable, Sofia acknowledges limitations rather than guessing. On Safari, AudioContext suspension detection shows a one-tap activation overlay instead of silently hanging.
 
----
-
-## Challenges we faced
+## Challenges we ran into
 
 **RTP packet pacing** was critical. Burst-sending audio causes severe distortion on phones. Strict 20ms interval queuing solved it, matching exactly the timing that telephone infrastructure expects at 8kHz with 160 samples per packet.
 
@@ -225,8 +201,6 @@ contextWindowCompression: {
 }
 ```
 
----
-
 ## What we learned
 
 _Non-blocking function calls_ are the difference between a voice assistant and a voice concierge. Guests do not sit in silence while APIs respond.
@@ -243,8 +217,6 @@ _Production deployment_ reveals bugs that staging never does. The ESM scoping is
 
 _Grounding is not optional_ in hospitality. A guest who receives a wrong price or wrong check-in time because the AI hallucinated creates a real-world problem. Every factual response must trace back to a live API call or a verified knowledge base entry.
 
----
-
 ## What's next
 
 Expanding Sofia to more hotel chains across Italy and eventually other countries.
@@ -255,47 +227,16 @@ Real-time multilingual translation mode for mixed-language guest groups travelin
 
 Predictive room assignment based on guest preference history analyzed across multiple stays.
 
----
+## Built with
 
-## Built With
-
-**AI Models**
 - [Google Gemini 2.5 Flash Native Audio](https://deepmind.google/technologies/gemini/) — voice, video, and phone calls
 - [Google Gemini 3 Flash](https://deepmind.google/technologies/gemini/) — text chat and WhatsApp
-
-**Google Cloud**
 - [Google Cloud Run](https://cloud.google.com/run) — containerized deployment in europe-west1
 - [Google GenAI SDK](https://ai.google.dev/gemini-api/docs) — Gemini API integration
 - [Google Places API](https://developers.google.com/maps/documentation/places/web-service) — nearby restaurants, attractions, ratings
 - [Google Directions API](https://developers.google.com/maps/documentation/directions) — public transport routing
 - [Google Search Grounding](https://ai.google.dev/gemini-api/docs/grounding) — real-time web search for current events and local info
 - [Google Artifact Registry](https://cloud.google.com/artifact-registry) — Docker image storage
-
-**Backend**
-- Node.js — server runtime
-- Express.js — HTTP and WebSocket server
-- Docker — containerization
-
-**Frontend**
-- React — UI framework
-- TypeScript — type safety
-- Tailwind CSS — styling
-- Vite — build tooling
-
-**External APIs**
-- HotelInCloud API — live room availability and quotations
-- Bokun API — partner tours and activities
-- Meta WhatsApp Cloud API — WhatsApp messaging and interactive Flows
-- Open-Meteo API — weather forecasts
-- Messagenet SIP — telephone infrastructure
-
-**Protocols**
-- WebSocket — real-time audio/video streaming
-- SIP/RTP — telephone call handling
-- G.711 μ-law — telephone audio codec
-- RSA-OAEP + AES-128-GCM — WhatsApp Flow encryption
-- Web Push (VAPID) — proactive browser notifications
-
-## Category
-
-Live Agents
+- Node.js, Express.js, React, TypeScript, Tailwind CSS, Vite, Docker
+- HotelInCloud API, Bokun API, Meta WhatsApp Cloud API, Open-Meteo API, Messagenet SIP
+- WebSocket, SIP/RTP, G.711 μ-law, RSA-OAEP + AES-128-GCM, Web Push (VAPID)
