@@ -73,6 +73,76 @@ const getWeatherFromOpenMeteo = async (args) => {
   }
 };
 
+// --- Hourly Forecast (for proactive engine) ---
+const getHourlyForecast = async () => {
+  try {
+    const response = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=43.7696&longitude=11.2558' +
+      '&hourly=temperature_2m,weather_code,precipitation_probability' +
+      '&forecast_days=1&timezone=Europe%2FRome'
+    );
+    const data = await response.json();
+    if (!data.hourly) return { hourly: [], alerts: [] };
+
+    const hourly = data.hourly.time.map((time, i) => ({
+      hour: new Date(time).getHours(),
+      time,
+      temp: Math.round(data.hourly.temperature_2m[i]),
+      weatherCode: data.hourly.weather_code[i],
+      condition: getWeatherCondition(data.hourly.weather_code[i]),
+      rainChance: data.hourly.precipitation_probability[i] || 0,
+    }));
+
+    const alerts = [];
+    const now = new Date();
+    const romeHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Rome', hour: 'numeric', hour12: false }));
+
+    const upcoming = hourly.filter(h => h.hour >= romeHour && h.hour <= romeHour + 6);
+    const rainHours = upcoming.filter(h => h.rainChance > 60);
+    if (rainHours.length > 0) {
+      alerts.push({
+        type: 'rain',
+        severity: rainHours.some(h => h.rainChance > 80) ? 'high' : 'moderate',
+        message: `Rain expected around ${rainHours[0].hour}:00`,
+        startHour: rainHours[0].hour,
+      });
+    }
+
+    const hotHours = upcoming.filter(h => h.temp > 35);
+    if (hotHours.length > 0) {
+      alerts.push({
+        type: 'heat',
+        severity: 'high',
+        message: `High heat expected (${hotHours[0].temp}°C)`,
+        peakTemp: Math.max(...hotHours.map(h => h.temp)),
+      });
+    }
+
+    return { hourly, alerts };
+  } catch (e) {
+    console.error('[WEATHER] Hourly forecast error:', e.message);
+    return { hourly: [], alerts: [] };
+  }
+};
+
+const getSunTimes = async () => {
+  try {
+    const response = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=43.7696&longitude=11.2558' +
+      '&daily=sunrise,sunset&timezone=Europe%2FRome&forecast_days=1'
+    );
+    const data = await response.json();
+    if (!data.daily) return null;
+    return {
+      sunrise: data.daily.sunrise[0]?.split('T')[1] || '06:30',
+      sunset: data.daily.sunset[0]?.split('T')[1] || '18:30',
+    };
+  } catch (e) {
+    console.error('[WEATHER] Sun times error:', e.message);
+    return null;
+  }
+};
+
 // --- Events ---
 const findEventsInFlorence = async (args) => {
   const query = (args.date || "").toLowerCase();
@@ -263,6 +333,8 @@ const getPublicTransportInfoDirect = async (args) => {
 
 export {
   getWeatherFromOpenMeteo,
+  getHourlyForecast,
+  getSunTimes,
   findEventsInFlorence,
   getTrainDeparturesDirect,
   findNearbyPlacesDirect,

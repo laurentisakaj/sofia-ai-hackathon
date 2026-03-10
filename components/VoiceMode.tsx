@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createBlob, decode, decodeAudioData } from './orb/utils';
 import './orb/visual-canvas';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin, Thermometer, Coffee, Lock, Wifi, Droplets, Tv, Eye } from 'lucide-react';
 
 /// <reference types="vite/client" />
 
@@ -29,6 +29,39 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     const [speechSpeed, setSpeechSpeed] = useState<'normal' | 'slow' | 'fast'>('normal');
     const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
     const [needsGesture, setNeedsGesture] = useState(false);
+
+    // Visual identification state — multiple live AR tags
+    type IdentMarker = { label: string; x: number; y: number; step: number | null };
+    type IdentTag = {
+        id: string;
+        object_type: string;
+        object_name: string;
+        brand_model?: string | null;
+        location_context?: string | null;
+        description: string;
+        actions: Array<{ label: string; instruction: string }>;
+        markers: IdentMarker[];
+        position_x: number;
+        position_y: number;
+        _originalX: number;
+        _originalY: number;
+        _motionBaseX: number;
+        _motionBaseY: number;
+        timestamp: number;
+    };
+    const [liveTags, setLiveTags] = useState<IdentTag[]>([]);
+    const [expandedTag, setExpandedTag] = useState<string | null>(null); // tag id for expanded detail view
+    const [expandedAction, setExpandedAction] = useState<number | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const tagTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+    const videoModeRef = useRef(videoMode);
+    videoModeRef.current = videoMode; // keep ref in sync for ws.onmessage closure
+
+    // Gyroscope-based AR tracking — DeviceMotion accumulates rotation, tags follow
+    const motionAccumRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+    const trackingRafRef = useRef<number | null>(null);
+    const cameraFacingRef = useRef(cameraFacing);
+    cameraFacingRef.current = cameraFacing;
 
     // Auto-reconnect tracking
     const reconnectAttemptsRef = useRef(0);
@@ -63,6 +96,87 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     const previewVideoRef = useRef<HTMLVideoElement | null>(null);
     const videoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+    // iOS screen recording: route audio through <audio> element so it's captured
+    const iosAudioElRef = useRef<HTMLAudioElement | null>(null);
+
+    // DeviceMotion listener — accumulate gyroscope rotation for AR tracking
+    useEffect(() => {
+        if (videoMode !== 'camera') {
+            motionAccumRef.current = { dx: 0, dy: 0 };
+            return;
+        }
+
+        const handler = (e: DeviceMotionEvent) => {
+            const rate = e.rotationRate;
+            if (!rate || rate.gamma === null || rate.beta === null) return;
+            const dt = (e.interval || 16) / 1000;
+            motionAccumRef.current.dx += rate.gamma! * dt; // horizontal pan (L/R)
+            motionAccumRef.current.dy += rate.beta! * dt;  // vertical tilt (U/D)
+        };
+
+        // iOS 13+ requires explicit permission (must be in user gesture context)
+        // Permission is requested in startVideoCapture; here we just attach the listener
+        window.addEventListener('devicemotion', handler);
+        return () => window.removeEventListener('devicemotion', handler);
+    }, [videoMode]);
+
+    // rAF tracking loop — apply accumulated gyroscope rotation to tag positions
+    useEffect(() => {
+        if (videoMode !== 'camera' || liveTags.length === 0) {
+            if (trackingRafRef.current) {
+                cancelAnimationFrame(trackingRafRef.current);
+                trackingRafRef.current = null;
+            }
+            return;
+        }
+
+        // Scaling: ~2% of screen per degree of rotation (matches ~50° horizontal FOV)
+        const SCALE = 2.0;
+
+        const trackFrame = () => {
+            trackingRafRef.current = requestAnimationFrame(trackFrame);
+
+            const { dx, dy } = motionAccumRef.current;
+
+            setLiveTags(prev => {
+                let changed = false;
+                const updated = prev.map(tag => {
+                    // Delta rotation since this tag was anchored
+                    const motionDx = dx - tag._motionBaseX;
+                    const motionDy = dy - tag._motionBaseY;
+
+                    // Skip if negligible motion
+                    if (Math.abs(motionDx) < 0.05 && Math.abs(motionDy) < 0.05) return tag;
+
+                    // Front camera video is mirrored → invert horizontal tracking
+                    const hSign = cameraFacingRef.current === 'user' ? 1 : -1;
+
+                    const newX = tag._originalX + motionDx * SCALE * hSign;
+                    const newY = tag._originalY - motionDy * SCALE;
+
+                    // Clamp with margin (tags can go slightly off-screen)
+                    const clampedX = Math.max(-15, Math.min(115, newX));
+                    const clampedY = Math.max(-15, Math.min(115, newY));
+
+                    if (Math.abs(clampedX - tag.position_x) > 0.15 || Math.abs(clampedY - tag.position_y) > 0.15) {
+                        changed = true;
+                        return { ...tag, position_x: clampedX, position_y: clampedY };
+                    }
+                    return tag;
+                });
+                return changed ? updated : prev;
+            });
+        };
+
+        trackingRafRef.current = requestAnimationFrame(trackFrame);
+        return () => {
+            if (trackingRafRef.current) {
+                cancelAnimationFrame(trackingRafRef.current);
+                trackingRafRef.current = null;
+            }
+        };
+    }, [videoMode, liveTags.length > 0]);
+
     // Stable ref for the orb custom element — never recreated
     const orbRef = useRef<any>(null);
 
@@ -96,7 +210,22 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             if (!outputAudioContextRef.current) {
                 outputAudioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
                 outputNodeRef.current = outputAudioContextRef.current.createGain();
-                outputNodeRef.current.connect(outputAudioContextRef.current.destination);
+
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                if (isIOS) {
+                    // iOS: route through <audio> element so screen recording captures Sofia's voice.
+                    // AudioContext.destination audio is NOT captured by iOS screen recording,
+                    // but <audio> element playback IS. Do NOT connect to both — causes double audio.
+                    const dest = outputAudioContextRef.current.createMediaStreamDestination();
+                    outputNodeRef.current.connect(dest);
+                    const audioEl = new Audio();
+                    audioEl.srcObject = dest.stream;
+                    audioEl.play().catch(() => {});
+                    iosAudioElRef.current = audioEl;
+                } else {
+                    outputNodeRef.current.connect(outputAudioContextRef.current.destination);
+                }
+
                 nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
             }
 
@@ -168,7 +297,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             // Pre-acquire camera stream in parallel with WebSocket handshake (no waiting)
             let preAcquiredCameraStream: MediaStream | null = null;
             if (autoStartCamera) {
-                navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
+                navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } })
                     .then(s => { preAcquiredCameraStream = s; })
                     .catch(() => {}); // camera optional — ignore errors
             }
@@ -212,7 +341,10 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                     }
                     // Live: show user's words in chat immediately
                     if (onLiveTranscript) onLiveTranscript('user', pendingUserTextRef.current);
+                    // Scanning animation when camera is active and user speaks
+                    if (videoModeRef.current === 'camera') setIsScanning(true);
                 } else if (msg.type === 'response') {
+                    setIsScanning(false);
                     if (msg.text) {
                         const cleanText = msg.text.replace(/\[suggestions?:.*$/gim, '').trim();
                         if (cleanText) {
@@ -251,6 +383,73 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                         result: msg.result,
                         attachments: msg.attachments || []
                     });
+                    // Visual identification — add/update live AR tag
+                    if (msg.name === 'visual_identification' && msg.attachments?.length > 0) {
+                        const vi = msg.attachments.find((a: any) => a.type === 'visual_identification');
+                        if (vi?.payload) {
+                            const p = vi.payload;
+                            const tagId = (p.object_name || 'unknown').toLowerCase().replace(/\s+/g, '_');
+                            const newTag: IdentTag = {
+                                id: tagId,
+                                object_type: p.object_type,
+                                object_name: p.object_name,
+                                brand_model: p.brand_model,
+                                location_context: p.location_context,
+                                description: p.description,
+                                actions: p.actions || [],
+                                markers: p.markers || [],
+                                position_x: p.position_x ?? 50,
+                                position_y: p.position_y ?? 50,
+                                _originalX: p.position_x ?? 50,
+                                _originalY: p.position_y ?? 50,
+                                _motionBaseX: motionAccumRef.current.dx,
+                                _motionBaseY: motionAccumRef.current.dy,
+                                timestamp: Date.now(),
+                            };
+                            setLiveTags(prev => {
+                                // Update existing tag position or add new one (max 6 visible)
+                                const existing = prev.findIndex(t => t.id === tagId);
+                                if (existing >= 0) {
+                                    const updated = [...prev];
+                                    updated[existing] = newTag;
+                                    return updated;
+                                }
+                                return [...prev.slice(-5), newTag]; // keep max 6
+                            });
+                            // Auto-remove tag after 15s if not refreshed
+                            const prevTimer = tagTimersRef.current.get(tagId);
+                            if (prevTimer) clearTimeout(prevTimer);
+                            tagTimersRef.current.set(tagId, setTimeout(() => {
+                                setLiveTags(prev => prev.filter(t => t.id !== tagId));
+                                tagTimersRef.current.delete(tagId);
+                            }, 15000));
+                        }
+                    }
+                    setIsScanning(false);
+                } else if (msg.type === 'position_update') {
+                    // Server-side refined positions from Gemini Flash vision API
+                    // Re-anchor gyroscope baseline so tracking continues from refined position
+                    const motionSnapshot = { ...motionAccumRef.current };
+                    setLiveTags(prev => prev.map(tag => {
+                        if (tag.id !== msg.tagId) return tag;
+                        const updated: IdentTag = {
+                            ...tag,
+                            position_x: msg.position_x,
+                            position_y: msg.position_y,
+                            _originalX: msg.position_x,
+                            _originalY: msg.position_y,
+                            _motionBaseX: motionSnapshot.dx,
+                            _motionBaseY: motionSnapshot.dy,
+                        };
+                        if (msg.markers?.length > 0) {
+                            updated.markers = tag.markers.map((m: IdentMarker, i: number) => ({
+                                ...m,
+                                x: msg.markers[i]?.x ?? m.x,
+                                y: msg.markers[i]?.y ?? m.y,
+                            }));
+                        }
+                        return updated;
+                    }));
                 } else if (msg.type === 'turnComplete') {
                     const userText = pendingUserTextRef.current;
                     const sofiaText = pendingSofiaTextRef.current;
@@ -265,6 +464,10 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                     }
                 } else if (msg.type === 'status') {
                     setStatus(msg.message);
+                    // Re-send location now that Gemini setup is complete (onopen send gets dropped)
+                    if (msg.message === 'ready' && userLocation) {
+                        ws.send(JSON.stringify({ type: 'location', lat: userLocation.lat, lng: userLocation.lng }));
+                    }
                 } else if (msg.type === 'error') {
                     setError(msg.message);
                 }
@@ -355,6 +558,16 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
         if (previewVideoRef.current) {
             previewVideoRef.current.srcObject = null;
         }
+        // Clear motion tracking
+        motionAccumRef.current = { dx: 0, dy: 0 };
+        if (trackingRafRef.current) {
+            cancelAnimationFrame(trackingRafRef.current);
+            trackingRafRef.current = null;
+        }
+        // Notify server that camera stopped (for location context awareness)
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'video_stop' }));
+        }
         setVideoMode('off');
     }, []);
 
@@ -364,11 +577,29 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
         stopVideoCapture();
         setIsStarted(false);
         setNeedsGesture(false);
+        setLiveTags([]);
+        setExpandedTag(null);
+        setIsScanning(false);
+        setExpandedAction(null);
+        tagTimersRef.current.forEach(t => clearTimeout(t));
+        tagTimersRef.current.clear();
         if (wsRef.current) wsRef.current.close();
         if (inputAudioContextRef.current) inputAudioContextRef.current.close().catch(() => { });
         if (outputAudioContextRef.current) outputAudioContextRef.current.close().catch(() => { });
         inputAudioContextRef.current = null;
         outputAudioContextRef.current = null;
+        // Cleanup iOS audio element
+        if (iosAudioElRef.current) {
+            iosAudioElRef.current.pause();
+            iosAudioElRef.current.srcObject = null;
+            iosAudioElRef.current = null;
+        }
+        // Cleanup motion tracking
+        motionAccumRef.current = { dx: 0, dy: 0 };
+        if (trackingRafRef.current) {
+            cancelAnimationFrame(trackingRafRef.current);
+            trackingRafRef.current = null;
+        }
     }, [stopRecording, stopVideoCapture]);
 
     useEffect(() => {
@@ -413,8 +644,8 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             const canvas = videoCanvasRef.current;
             if (!canvas) return;
 
-            // Use smaller resolution for efficiency
-            const targetWidth = 512;
+            // Higher resolution for better text/landmark recognition
+            const targetWidth = 768;
             const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
             canvas.width = targetWidth;
             canvas.height = targetHeight;
@@ -435,7 +666,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
 
                 // Convert to JPEG and send
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                 const base64Data = dataUrl.split(',')[1];
 
                 wsRef.current.send(JSON.stringify({
@@ -443,7 +674,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                     content: base64Data,
                     mimeType: 'image/jpeg'
                 }));
-            }, 1000); // 1 frame per second
+            }, 500); // 2 frames per second for smoother real-time feel
         };
     }, []);
 
@@ -456,7 +687,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             let stream: MediaStream;
             if (mode === 'camera') {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 640, height: 480, facingMode: cameraFacing }
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: cameraFacing }
                 });
             } else {
                 // getDisplayMedia is not available on most mobile browsers
@@ -488,6 +719,11 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             if (!video) return;
 
             setupVideoCapture(video, stream);
+
+            // Request DeviceMotion permission for AR tracking (iOS 13+ requires user gesture)
+            if (mode === 'camera' && typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+                (DeviceMotionEvent as any).requestPermission().catch(() => {});
+            }
 
             // Also update preview
             if (previewVideoRef.current) {
@@ -564,7 +800,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 640, height: 480, facingMode: newFacing }
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: newFacing }
             });
             videoStreamRef.current = stream;
 
@@ -626,6 +862,39 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const canScreenShare = !isMobile && !!navigator.mediaDevices?.getDisplayMedia;
 
+    // Visual identification helpers
+    const idTypeEmoji: Record<string, string> = {
+        appliance: '\u2699\uFE0F', landmark: '\uD83C\uDFDB\uFE0F', food: '\uD83C\uDF7D\uFE0F',
+        sign: '\uD83E\uDEA7', document: '\uD83D\uDCC4', hotel_feature: '\uD83C\uDFE8', artwork: '\uD83C\uDFA8'
+    };
+
+    // Hotel coordinates for quick-action proximity detection
+    const hotelCoords = [
+        { name: 'Palazzina Fusi', lat: 43.7676, lng: 11.2442 },
+        { name: 'Hotel Lombardia', lat: 43.7768, lng: 11.2524 },
+        { name: 'Hotel Arcadia', lat: 43.7760, lng: 11.2490 },
+        { name: 'Hotel Villa Betania', lat: 43.7558, lng: 11.2456 },
+        { name: "L'Antica Porta", lat: 43.7580, lng: 11.2480 },
+        { name: 'Residenza Ognissanti', lat: 43.7726, lng: 11.2428 },
+    ];
+    const haversineDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+    const nearHotel = userLocation ? hotelCoords.find(h => haversineDistance(userLocation.lat, userLocation.lng, h.lat, h.lng) < 200) : null;
+
+    const quickActions = [
+        { icon: Thermometer, label: 'AC', question: 'How do I use the air conditioning remote control?' },
+        { icon: Coffee, label: 'Coffee', question: 'How do I use the coffee machine in my room?' },
+        { icon: Lock, label: 'Safe', question: 'How do I set up and use the room safe?' },
+        { icon: Wifi, label: 'WiFi', question: 'What is the WiFi password?' },
+        { icon: Droplets, label: 'Shower', question: 'How does the shower work?' },
+        { icon: Tv, label: 'TV', question: 'How do I use the TV remote?' },
+    ];
+
     return (
         <div className={`fixed inset-0 z-50 ${cam ? 'bg-black pointer-events-auto' : 'pointer-events-none'}`}>
             {/* Hidden capture elements */}
@@ -636,11 +905,196 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
             {cam && (
                 <video
                     ref={previewVideoRef}
-                    className="absolute inset-0 w-full h-full object-contain bg-black z-[1]"
-                    style={cameraFacing === 'user' ? { transform: 'scaleX(-1)' } : undefined}
+                    className="absolute inset-0 w-full h-full bg-black z-[1]"
+                    style={{
+                        objectFit: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'cover' as const : 'contain' as const,
+                        ...(cameraFacing === 'user' ? { transform: 'scaleX(-1)' } : {}),
+                    }}
                     playsInline
                     muted
                 />
+            )}
+
+            {/* ── Camera: scanning sweep (when user speaks + camera on) ── */}
+            {cam && isScanning && liveTags.length === 0 && (
+                <div className="absolute inset-0 z-[6] pointer-events-none">
+                    <div className="absolute left-0 right-0 h-[2px]" style={{
+                        background: 'linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.6) 20%, rgba(245,158,11,0.8) 50%, rgba(245,158,11,0.6) 80%, transparent 100%)',
+                        boxShadow: '0 0 12px 2px rgba(245,158,11,0.3)',
+                        animation: 'scan-sweep 2s ease-in-out infinite',
+                    }} />
+                </div>
+            )}
+
+            {/* ── Camera: live AR tags pinned on identified objects ── */}
+            {cam && liveTags.length > 0 && (
+                <div className="absolute inset-0 z-[7]">
+                    {liveTags.map(tag => {
+                        const isExpanded = expandedTag === tag.id;
+                        const emoji = idTypeEmoji[tag.object_type] || '\uD83D\uDD0D';
+                        return (
+                            <div key={tag.id}>
+                                {/* Annotation markers — numbered dots pinned on object parts */}
+                                {tag.markers.length > 0 && tag.markers.map((marker, mi) => {
+                                    // Shift markers by the same delta as tag center (MediaPipe tracking)
+                                    const markerX = marker.x + (tag.position_x - tag._originalX);
+                                    const markerY = marker.y + (tag.position_y - tag._originalY);
+                                    return (
+                                    <div
+                                        key={`${tag.id}-m${mi}`}
+                                        className="absolute pointer-events-none"
+                                        style={{
+                                            left: `${markerX}%`,
+                                            top: `${markerY}%`,
+                                            transform: 'translate(-50%, -50%)',
+                                            transition: 'left 0.1s linear, top 0.1s linear',
+                                            animation: `marker-appear 0.3s ease-out ${mi * 0.15}s both`,
+                                        }}
+                                    >
+                                        {/* Glow ring */}
+                                        <div className="absolute -inset-2 rounded-full" style={{
+                                            background: 'radial-gradient(circle, rgba(245,158,11,0.25) 0%, transparent 70%)',
+                                            animation: 'tag-pulse 2s ease-in-out infinite',
+                                        }} />
+                                        {/* Numbered circle */}
+                                        <div className="relative flex items-center justify-center w-6 h-6 rounded-full border-2 border-amber-400 bg-black/70 backdrop-blur-sm shadow-lg" style={{
+                                            boxShadow: '0 0 10px rgba(245,158,11,0.4), 0 2px 6px rgba(0,0,0,0.5)',
+                                        }}>
+                                            <span className="text-amber-400 text-[10px] font-bold">{marker.step || mi + 1}</span>
+                                        </div>
+                                        {/* Label */}
+                                        <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 whitespace-nowrap">
+                                            <span className="text-[10px] font-semibold text-white bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-400/20" style={{
+                                                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+                                            }}>{marker.label}</span>
+                                        </div>
+                                    </div>
+                                    );
+                                })}
+
+                                {/* Floating tag pill — pinned at object position */}
+                                <div
+                                    className="absolute pointer-events-auto"
+                                    style={{
+                                        left: `${tag.position_x}%`,
+                                        top: `${tag.position_y}%`,
+                                        transform: 'translate(-50%, -100%) translateY(-12px)',
+                                        transition: 'left 0.1s linear, top 0.1s linear',
+                                        animation: 'tag-appear 0.4s ease-out',
+                                    }}
+                                >
+                                    {/* Tag pill */}
+                                    <button
+                                        onClick={() => { setExpandedTag(isExpanded ? null : tag.id); setExpandedAction(null); }}
+                                        className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md border transition-all active:scale-95"
+                                        style={{
+                                            background: isExpanded ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.55)',
+                                            borderColor: isExpanded ? 'rgba(245,158,11,0.6)' : 'rgba(245,158,11,0.35)',
+                                            boxShadow: '0 2px 12px rgba(0,0,0,0.4), 0 0 8px rgba(245,158,11,0.15)',
+                                        }}
+                                    >
+                                        <span className="text-sm">{emoji}</span>
+                                        <span className="text-white text-[11px] font-semibold whitespace-nowrap max-w-[120px] truncate">{tag.object_name}</span>
+                                    </button>
+                                    {/* Connecting line from pill to object center */}
+                                    <div className="absolute left-1/2 bottom-0 w-[1px] h-3 bg-amber-400/40" />
+                                </div>
+
+                                {/* Expanded detail panel — slides up from tag */}
+                                {isExpanded && (
+                                    <div className="absolute z-[8] pointer-events-auto" style={{
+                                        left: `clamp(0.75rem, calc(${tag.position_x}% - 9rem), calc(100% - 18.75rem))`,
+                                        top: `clamp(3rem, calc(${tag.position_y}% - 10rem), 60%)`,
+                                        width: '18rem',
+                                        maxWidth: 'calc(100% - 1.5rem)',
+                                        animation: 'badge-in 0.3s ease-out',
+                                    }}>
+                                        <div className="bg-black/65 backdrop-blur-xl rounded-2xl border border-amber-400/30 overflow-hidden shadow-2xl">
+                                            <div className="flex items-start gap-2.5 p-3 pb-1.5">
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="text-white font-semibold text-sm leading-tight">{tag.object_name}</h3>
+                                                    {tag.location_context && (
+                                                        <span className="text-white/50 text-[10px]">{tag.location_context}</span>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={() => setExpandedTag(null)}
+                                                    className="text-white/40 hover:text-white/80 p-0.5 transition-colors"
+                                                ><X size={14} /></button>
+                                            </div>
+                                            <p className="text-white/70 text-[11px] leading-relaxed px-3 pb-2 line-clamp-3">{tag.description}</p>
+                                            {tag.actions.length > 0 && (
+                                                <div className="px-3 pb-3 space-y-1.5">
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {tag.actions.map((action, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                onClick={() => setExpandedAction(expandedAction === idx ? null : idx)}
+                                                                className={`text-[10px] font-medium px-2 py-1 rounded-full transition-all active:scale-95 ${
+                                                                    expandedAction === idx ? 'bg-amber-500/90 text-white' : 'bg-white/15 text-white/90'
+                                                                }`}
+                                                            >{action.label}</button>
+                                                        ))}
+                                                    </div>
+                                                    {expandedAction !== null && tag.actions[expandedAction] && (
+                                                        <div className="bg-white/10 rounded-xl p-2 mt-1">
+                                                            <p className="text-white/80 text-[11px] leading-relaxed">{tag.actions[expandedAction].instruction}</p>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (wsRef.current?.readyState === WebSocket.OPEN) {
+                                                                        wsRef.current.send(JSON.stringify({ type: 'text', text: `Show me how to: ${tag.actions[expandedAction!].instruction}` }));
+                                                                    }
+                                                                    setExpandedAction(null);
+                                                                }}
+                                                                className="mt-1.5 text-[10px] font-semibold text-amber-400"
+                                                            >Ask Sofia →</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Shared keyframes */}
+            <style>{`
+                @keyframes tag-appear { 0% { transform: translate(-50%, -100%) translateY(-12px) scale(0); opacity: 0; } 50% { transform: translate(-50%, -100%) translateY(-12px) scale(1.1); } 100% { transform: translate(-50%, -100%) translateY(-12px) scale(1); opacity: 1; } }
+                @keyframes marker-appear { 0% { transform: translate(-50%, -50%) scale(0); opacity: 0; } 60% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+                @keyframes tag-pulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0; } }
+                @keyframes badge-in { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+                @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+                @keyframes scan-sweep { 0% { top: 5%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 95%; opacity: 0; } }
+            `}</style>
+
+            {/* ── Camera: quick-action pills (near hotel, no active identification) ── */}
+            {cam && nearHotel && liveTags.length === 0 && !isScanning && (
+                <div className="absolute top-16 left-3 right-3 z-[7]">
+                    <div className="flex items-center gap-1.5 mb-2">
+                        <Eye size={12} className="text-white/50" />
+                        <span className="text-white/50 text-[10px] font-medium uppercase tracking-wider">Near {nearHotel.name}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                        {quickActions.map(({ icon: Icon, label, question }) => (
+                            <button
+                                key={label}
+                                onClick={() => {
+                                    if (wsRef.current?.readyState === WebSocket.OPEN) {
+                                        wsRef.current.send(JSON.stringify({ type: 'text', text: question }));
+                                    }
+                                }}
+                                className="flex items-center gap-1.5 bg-black/40 backdrop-blur-sm text-white/80 hover:bg-black/60 hover:text-white px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-all active:scale-95"
+                            >
+                                <Icon size={13} />
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             )}
 
             {/* ── Camera: top bar (flip + location badge + close) ── */}

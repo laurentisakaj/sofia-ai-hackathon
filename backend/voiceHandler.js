@@ -7,7 +7,7 @@ import {
 } from '../lib/config.js';
 import { buildSystemInstruction, getVoiceToolDeclarations } from './gemini.js';
 import { executeToolCall } from './tools.js';
-import { setHicSession } from '../lib/config.js';
+import { ai, setHicSession } from '../lib/config.js';
 import { trimToolResultForVoice, autoBuiltOffers, HIC_TOOLS } from './voiceShared.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
@@ -113,6 +113,58 @@ setInterval(() => {
 }, 60000);
 
 /**
+ * Async position refinement — sends the latest video frame to Gemini Flash (standard API)
+ * for precise spatial coordinates. Results sent to client as 'position_update' WS message.
+ * Fire-and-forget: does NOT block the voice tool response loop.
+ */
+async function refineTagPositions(ws, sessionId, payload, frameBase64) {
+  const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  const itemsToLocate = [`The overall "${payload.object_name}" — find its center`];
+  if (payload.markers?.length > 0) {
+    payload.markers.forEach((m, i) => {
+      itemsToLocate.push(`${i + 1}. "${m.label}"`);
+    });
+  }
+
+  const result = await model.generateContent([
+    { inlineData: { mimeType: 'image/jpeg', data: frameBase64 } },
+    `Look at this image. Locate each item and return its PRECISE position as x,y percentages of the image dimensions (0=left/top edge, 100=right/bottom edge).
+
+Items to locate:
+${itemsToLocate.join('\n')}
+
+Return ONLY valid JSON (no markdown fences):
+{"position_x": number, "position_y": number, "markers": [{"label": string, "x": number, "y": number}]}
+
+Be PRECISE. Look at the actual pixel location of each button/element. Different items must have different coordinates.`
+  ]);
+
+  const text = result.response.text().trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return;
+  const refined = JSON.parse(jsonMatch[0]);
+  if (typeof refined.position_x !== 'number' || typeof refined.position_y !== 'number') return;
+
+  const tagId = (payload.object_name || 'unknown').toLowerCase().replace(/\s+/g, '_');
+  console.log(`[VOICE] ${sessionId} Position refinement for "${payload.object_name}": (${refined.position_x.toFixed(1)}, ${refined.position_y.toFixed(1)})`);
+
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      type: 'position_update',
+      tagId,
+      position_x: Math.min(100, Math.max(0, refined.position_x)),
+      position_y: Math.min(100, Math.max(0, refined.position_y)),
+      markers: (refined.markers || []).map((m, i) => ({
+        label: m.label || payload.markers?.[i]?.label || '',
+        x: Math.min(100, Math.max(0, m.x)),
+        y: Math.min(100, Math.max(0, m.y)),
+      })),
+    }));
+  }
+}
+
+/**
  * Handle a new /ws/voice WebSocket connection.
  * Called from server.js after upgrade + authentication.
  */
@@ -171,6 +223,7 @@ export async function handleVoiceConnection(ws, req) {
   let storedHandle = null; // Session resumption handle for Gemini Live reconnection
   let setupMsg = null; // Stored at function scope so reconnect handler can access it
   let reconnecting = false; // Guard against concurrent reconnection attempts
+  let pendingLocation = null; // Buffer location received before Gemini setup completes
 
   // Safe send wrapper — checks readyState before sending (function scope so client handler can access it)
   function geminiSend(data) {
@@ -201,7 +254,7 @@ export async function handleVoiceConnection(ws, req) {
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } }
             },
-            mediaResolution: "MEDIA_RESOLUTION_LOW", // 66 tokens/frame vs 258 — 75% savings on camera/screen
+            mediaResolution: "MEDIA_RESOLUTION_MEDIUM", // 258 tokens/frame — better text/landmark recognition for camera
             enableAffectiveDialog: true,
             thinkingConfig: { thinkingBudget: 0 },
           },
@@ -227,8 +280,9 @@ export async function handleVoiceConnection(ws, req) {
           tools: [
             ...getVoiceToolDeclarations().map(t => ({
               functionDeclarations: t.functionDeclarations
-            })),
-            { googleSearch: {} } // Supported on Live API (v1alpha) — only REST API (v1beta) blocks it
+            }))
+            // googleSearch removed — causes 1008 "Requested entity was not found" crashes
+            // when Gemini tries to use it instead of function tools (e.g. weather queries)
           ]
         }
       };
@@ -347,6 +401,23 @@ export async function handleVoiceConnection(ws, req) {
           geminiSetupDone = true;
           console.log(`[VOICE] ${sessionId} Gemini setup complete — signaling frontend ready`);
           if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'status', message: 'ready' }));
+
+          // Flush buffered location that arrived before setup
+          if (pendingLocation) {
+            const { lat, lng } = pendingLocation;
+            const locCtx = ws.videoActive
+              ? `[SYSTEM: Guest GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Camera is ACTIVE — combine what you SEE with this location for precise identification. Proactively identify landmarks, streets, and nearby points of interest.]`
+              : `[SYSTEM: The user's current GPS location is latitude ${lat.toFixed(6)}, longitude ${lng.toFixed(6)}. Use this for directions, nearby recommendations, and location-aware assistance. Do NOT read this aloud or acknowledge it — just use it naturally when relevant.]`;
+            geminiSend({
+              client_content: {
+                turns: [{ role: 'user', parts: [{ text: locCtx }] }],
+                turn_complete: true
+              }
+            });
+            ws.guestLocation = pendingLocation;
+            console.log(`[VOICE] ${sessionId} Flushed buffered location: ${lat},${lng}`);
+            pendingLocation = null;
+          }
 
           // 10-minute session limit — warn Sofia to wrap up, then hard-close
           sessionLimitTimer = setTimeout(() => {
@@ -523,6 +594,14 @@ export async function handleVoiceConnection(ws, req) {
               if (ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: 'tool_result', name: call.name, result: result, attachments: voiceAttachments }));
               }
+              // Async position refinement for visual_identification tags
+              if (call.name === 'visual_identification' && ws.lastVideoFrame) {
+                const viAttach = voiceAttachments.find(a => a.type === 'visual_identification');
+                if (viAttach?.payload) {
+                  refineTagPositions(ws, sessionId, viAttach.payload, ws.lastVideoFrame)
+                    .catch(err => console.warn(`[VOICE] ${sessionId} Position refinement failed:`, err.message));
+                }
+              }
               // Trim result for Gemini Live — strip attachments and redundant data to avoid context bloat
               const trimmed = trimToolResultForVoice(call.name, result);
               // Gemini Live requires response values to be strings
@@ -587,15 +666,23 @@ export async function handleVoiceConnection(ws, req) {
   let audioChunkCount = 0;
   ws.on('message', (data) => {
     if (!geminiWs || geminiWs.readyState !== WebSocket.OPEN) return;
-    if (!geminiSetupDone) {
-      console.log(`[VOICE] ${sessionId} Dropping message (setup not done yet)`);
-      return;
-    }
 
     try {
       const raw = data.toString();
-
       const message = JSON.parse(raw);
+
+      // Buffer location even before setup completes — it will be flushed on setupComplete
+      if (!geminiSetupDone) {
+        if (message.type === 'location') {
+          const lat = parseFloat(message.lat);
+          const lng = parseFloat(message.lng);
+          if (isFinite(lat) && isFinite(lng)) {
+            pendingLocation = { lat, lng };
+            console.log(`[VOICE] ${sessionId} Buffered location (setup pending): ${lat},${lng}`);
+          }
+        }
+        return;
+      }
 
       if (message.type === 'audio' && message.content) {
         audioChunkCount++;
@@ -648,6 +735,9 @@ export async function handleVoiceConnection(ws, req) {
           }
         });
       } else if (message.type === 'video_frame' && message.content) {
+        // Track camera state for location-aware context
+        ws.videoActive = true;
+        ws.lastVideoFrame = message.content; // store for position refinement
         // Forward camera/screen frame to Gemini Live as video input
         geminiSend({
           realtime_input: {
@@ -658,17 +748,27 @@ export async function handleVoiceConnection(ws, req) {
           }
         });
 
+      } else if (message.type === 'video_stop') {
+        ws.videoActive = false;
+
       } else if (message.type === 'location') {
         // User's GPS location — validate and inject into Gemini context
         const lat = parseFloat(message.lat);
         const lng = parseFloat(message.lng);
         if (isFinite(lat) && isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          console.log(`[VOICE] ${sessionId} Location received: ${lat},${lng}`);
+          // Store location for camera context
+          ws.guestLocation = { lat, lng };
+          console.log(`[VOICE] ${sessionId} Location received: ${lat},${lng} (camera ${ws.videoActive ? 'ON' : 'OFF'})`);
+
+          const locationContext = ws.videoActive
+            ? `[SYSTEM: Guest GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Camera is ACTIVE — combine what you SEE with this location for precise identification. Proactively identify landmarks, streets, and nearby points of interest.]`
+            : `[SYSTEM: The user's current GPS location is latitude ${lat.toFixed(6)}, longitude ${lng.toFixed(6)}. Use this for directions, nearby recommendations, and location-aware assistance. Do NOT read this aloud or acknowledge it — just use it naturally when relevant.]`;
+
           geminiSend({
             client_content: {
               turns: [{
                 role: 'user',
-                parts: [{ text: `[SYSTEM: The user's current GPS location is latitude ${lat.toFixed(6)}, longitude ${lng.toFixed(6)}. Use this for directions, nearby recommendations, and location-aware assistance. Do NOT read this aloud or acknowledge it — just use it naturally when relevant.]` }]
+                parts: [{ text: locationContext }]
               }],
               turn_complete: true
             }

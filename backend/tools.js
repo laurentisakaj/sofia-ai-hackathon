@@ -186,7 +186,7 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
             hotelName: args.hotel_name || quotationResult.hotel_name,
             templateName: 'quotation_followup',
             languageCode: lang === 'it' ? 'it' : 'en',
-            parameters: [args.guest_name?.split(' ')[0] || 'Guest', args.hotel_name || quotationResult.hotel_name],
+            parameters: [args.guest_name?.split(' ')[0] || 'Guest', args.hotel_name || quotationResult.hotel_name, quotationResult.booking_link],
             scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             metadata: { bookingLink: quotationResult.booking_link }
           }).catch(err => console.error('[SCHEDULER] Failed to schedule quotation follow-up:', err.message));
@@ -523,6 +523,43 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
       }
       return { success: false, message: `Failed to send ${flowType} flow. The Flow may not be published yet, or the FLOW_ID is incorrect.` };
     }
+    case 'visual_identification': {
+      // Parse actions from either native array (chat) or JSON string (voice — flattened to avoid Gemini Live 1011)
+      let rawActions = args.actions || [];
+      if (!rawActions.length && args.actions_json) {
+        try { rawActions = JSON.parse(args.actions_json); } catch { rawActions = []; }
+      }
+      // Parse markers (annotation points on object)
+      let rawMarkers = args.markers || [];
+      if (!rawMarkers.length && args.markers_json) {
+        try { rawMarkers = JSON.parse(args.markers_json); } catch { rawMarkers = []; }
+      }
+      const identification = {
+        object_type: args.object_type || 'hotel_feature',
+        object_name: args.object_name || 'Unknown',
+        brand_model: args.brand_model || null,
+        location_context: args.location_context || null,
+        description: args.description || '',
+        position_x: Math.min(100, Math.max(0, args.position_x ?? 50)),
+        position_y: Math.min(100, Math.max(0, args.position_y ?? 50)),
+        actions: (Array.isArray(rawActions) ? rawActions : []).slice(0, 6).map(a => ({
+          label: (a.label || '').substring(0, 40),
+          instruction: (a.instruction || '').substring(0, 500)
+        })),
+        markers: (Array.isArray(rawMarkers) ? rawMarkers : []).slice(0, 10).map(m => ({
+          label: (m.label || '').substring(0, 30),
+          x: Math.min(100, Math.max(0, m.x ?? 50)),
+          y: Math.min(100, Math.max(0, m.y ?? 50)),
+          step: m.step || null
+        }))
+      };
+      generatedAttachments.push({
+        type: 'visual_identification',
+        title: identification.object_name,
+        payload: identification
+      });
+      return { success: true, message: `Overlay shown on screen for: ${identification.object_name}. Do NOT describe it again — the guest can see the tag and markers. Just ask if they need help.` };
+    }
     case 'build_itinerary': {
       generatedAttachments.push({
         type: 'itinerary',
@@ -534,6 +571,21 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
         }
       });
       return { success: true, message: "Itinerary card created." };
+    }
+    case 'set_proactive_optin': {
+      const { guest_phone, opt_in, interests } = args;
+      if (!guest_phone) return { success: false, error: 'Phone number required' };
+      try {
+        const { updateJourney } = await import('./journeyTracker.js');
+        const updates = { proactiveOptIn: !!opt_in };
+        if (interests?.length > 0) updates.interests = interests;
+        await updateJourney(guest_phone, updates);
+        console.log(`[PROACTIVE] Opt-${opt_in ? 'in' : 'out'} for ${guest_phone}`);
+        return { success: true, opted_in: !!opt_in };
+      } catch (e) {
+        console.error('[PROACTIVE] Opt-in error:', e.message);
+        return { success: false, error: e.message };
+      }
     }
     case 'save_guest_preferences': {
       const { guest_name, guest_email, preferences } = args;

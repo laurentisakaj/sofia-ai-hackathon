@@ -140,6 +140,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
   const isFirstRender = useRef(true);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeSentRef = useRef(false);
+  const pushSubscribedRef = useRef(false);
+
+  // Register service worker for push notifications
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => {
+        console.warn('SW registration failed:', err);
+      });
+    }
+  }, []);
+
+  const subscribeToPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const resp = await fetch('/api/vapid-key');
+      if (!resp.ok) return;
+      const { publicKey } = await resp.json();
+      if (!publicKey) return;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey,
+      });
+      const guestPhone = localStorage.getItem('ognissanti_guest_phone');
+      const guestEmail = localStorage.getItem('ognissanti_guest_email');
+      if (!guestPhone && !guestEmail) return;
+      await fetch('/api/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON(), guestPhone, guestEmail }),
+      });
+      console.log('[PUSH] Subscribed to notifications');
+    } catch (e) {
+      console.warn('[PUSH] Subscribe error:', e);
+    }
+  };
 
   // Initialize Chat
   useEffect(() => {
@@ -340,6 +376,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
         isLoading: false,
       }));
 
+      // Auto-subscribe to push notifications once guest is identified
+      if (!pushSubscribedRef.current && (localStorage.getItem('ognissanti_guest_phone') || localStorage.getItem('ognissanti_guest_email'))) {
+        pushSubscribedRef.current = true;
+        subscribeToPush();
+      }
+
       if (geminiResponse.suggestions && geminiResponse.suggestions.length > 0) {
         setCurrentSuggestions(geminiResponse.suggestions);
       }
@@ -483,6 +525,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
   const openVoiceWithConsent = (withVideo: boolean) => {
     if (consentGranted) {
       setAutoStartCamera(withVideo);
+      // Request location immediately if not yet available (consent already granted, permission remembered by browser)
+      if (!userLocation && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => {},
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        );
+      }
       setIsVoiceOpen(true);
     } else {
       setPendingVideoMode(withVideo);

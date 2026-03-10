@@ -2007,6 +2007,73 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ attachment, compact = f
     );
   }
 
+  if (type === 'daily_briefing' && payload) {
+    const { greeting, weather, suggestions, hiddenGem, tripDay, totalDays } = payload;
+    const lang = attachment.language || 'en';
+    const labels = {
+      it: { picks: 'Le mie scelte per oggi', gem: 'Tesoro nascosto', more: 'Dimmi di più' },
+      en: { picks: "Today's Picks For You", gem: 'Hidden Gem', more: 'Tell Me More' },
+      fr: { picks: "Mes choix pour aujourd'hui", gem: 'Perle cachée', more: 'En savoir plus' },
+      de: { picks: 'Meine Empfehlungen für heute', gem: 'Geheimtipp', more: 'Mehr erfahren' },
+      es: { picks: 'Mis recomendaciones para hoy', gem: 'Joya oculta', more: 'Cuéntame más' },
+    }[lang] || { picks: "Today's Picks For You", gem: 'Hidden Gem', more: 'Tell Me More' };
+
+    const WeatherIcon = weather?.condition?.toLowerCase().includes('rain') ? CloudRain
+      : weather?.condition?.toLowerCase().includes('cloud') ? CloudSun
+      : Sun;
+
+    return (
+      <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/60 rounded-2xl shadow-lg overflow-hidden max-w-sm">
+        <div className="bg-gradient-to-r from-amber-700 to-amber-600 px-5 py-4 text-white">
+          <div className="text-lg font-semibold">{greeting || `Day ${tripDay} of ${totalDays}`}</div>
+          {weather && (
+            <div className="flex items-center gap-2 mt-1 text-amber-100 text-sm">
+              <WeatherIcon className="w-4 h-4" />
+              <span>{weather.temp} {weather.condition}</span>
+              {weather.rainChance > 0 && <span>· {weather.rainChance}% rain</span>}
+              {weather.sunset && <span>· Sunset {weather.sunset}</span>}
+            </div>
+          )}
+        </div>
+        {suggestions && suggestions.length > 0 && (
+          <div className="px-5 py-4">
+            <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-3">{labels.picks}</div>
+            <div className="space-y-3">
+              {suggestions.map((s: any, i: number) => (
+                <div key={i} className="flex gap-3 items-start">
+                  <div className="text-lg mt-0.5">{s.icon || ['🏛️', '🍝', '🌅'][i] || '📍'}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm">{s.title}</div>
+                    {s.reason && <div className="text-xs text-amber-700 italic mt-0.5">"{s.reason}"</div>}
+                    {s.time && <div className="text-xs text-gray-500 mt-0.5">{s.time}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {hiddenGem && (
+          <div className="mx-5 mb-4 p-3 bg-amber-100/60 rounded-xl border border-amber-200/40">
+            <div className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">💎 {labels.gem}</div>
+            <div className="font-semibold text-gray-900 text-sm">{hiddenGem.title}</div>
+            <div className="text-xs text-gray-600 mt-0.5">{hiddenGem.description}</div>
+          </div>
+        )}
+        <div className="px-5 pb-4">
+          <button
+            onClick={() => {
+              const event = new CustomEvent('sofia-suggestion', { detail: { text: labels.more } });
+              window.dispatchEvent(event);
+            }}
+            className="w-full py-2.5 bg-amber-700 text-white text-sm font-medium rounded-xl hover:bg-amber-800 transition-colors"
+          >
+            💬 {labels.more}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (type === 'handoff') {
     const { whatsapp, email, property_name } = payload;
     return (

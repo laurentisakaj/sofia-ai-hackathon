@@ -310,16 +310,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, compact = false,
                   }
                   return true;
                 });
-                const isMulti = filtered.length > 1;
+                // Horizontal scroll only for multiple booking cards — not for map+image combos
+                const scrollableTypes = new Set(['booking_options', 'partner_tours']);
+                const isHorizontalScroll = filtered.length > 1 && filtered.every(a => scrollableTypes.has(a.type));
                 return (
-                  <div className={isMulti
+                  <div className={isHorizontalScroll
                     ? 'flex flex-row gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory'
                     : 'flex flex-col gap-2'
                   }>
                     {filtered.map((attachment, idx) => (
                       <div
                         key={idx}
-                        className={`card-animate-in flex-shrink-0 ${isMulti ? 'w-[280px] snap-start' : 'w-full'}`}
+                        className={`card-animate-in flex-shrink-0 ${isHorizontalScroll ? 'w-[280px] snap-start' : 'w-full'}`}
                         style={{ animationDelay: `${idx * 120}ms`, opacity: 0 }}
                       >
                         <AttachmentCard attachment={attachment} compact={compact} />

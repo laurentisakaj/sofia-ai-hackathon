@@ -29,6 +29,8 @@ import { rateLimit } from '../lib/auth.js';
 import { buildSystemInstruction, geminiToolDeclarations } from '../backend/gemini.js';
 import { executeToolCall } from '../backend/tools.js';
 import { getGuestProfileByNameAsync, getGuestProfileAsync, getGuestProfileByPhoneAsync, saveGuestProfileAsync } from '../backend/guests.js';
+import { updateJourney } from '../backend/journeyTracker.js';
+import { getVapidPublicKey } from '../backend/webpush.js';
 
 const router = Router();
 
@@ -118,6 +120,12 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
       const lng = parseFloat(location.lng);
       if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
         messageParts.push({ text: `[SYSTEM CONTEXT] User Location: ${lat},${lng} [/SYSTEM CONTEXT]\n\nUser Message: ${message}` });
+        // Persist location for proactive engine
+        if (guestPhone || guestEmail) {
+          updateJourney(guestPhone || guestEmail, {
+            location: { lat, lng, updatedAt: new Date().toISOString() }
+          }).catch(e => console.error('[JOURNEY] Location save error:', e.message));
+        }
       } else {
         messageParts.push({ text: message });
       }
@@ -395,6 +403,50 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
       attachments: []
     });
   }
+});
+
+// --- Location update endpoint (lightweight, no chat) ---
+router.post('/api/location', rateLimit(60 * 1000, 30), async (req, res) => {
+  const { lat, lng, guestPhone, guestEmail } = req.body;
+  if (!lat || !lng || (!guestPhone && !guestEmail)) {
+    return res.status(400).json({ error: 'lat, lng, and guestPhone or guestEmail required' });
+  }
+  const latNum = parseFloat(lat);
+  const lngNum = parseFloat(lng);
+  if (isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  try {
+    await updateJourney(guestPhone || guestEmail, {
+      location: { lat: latNum, lng: lngNum, updatedAt: new Date().toISOString() }
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[LOCATION] Update error:', e.message);
+    res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
+// --- Push subscription endpoint ---
+router.post('/api/push-subscribe', rateLimit(60 * 1000, 10), async (req, res) => {
+  const { subscription, guestPhone, guestEmail } = req.body;
+  if (!subscription?.endpoint || (!guestPhone && !guestEmail)) {
+    return res.status(400).json({ error: 'subscription and guest identifier required' });
+  }
+  try {
+    await updateJourney(guestPhone || guestEmail, { pushSubscription: subscription });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[PUSH] Subscribe error:', e.message);
+    res.status(500).json({ error: 'Failed to save subscription' });
+  }
+});
+
+// --- VAPID public key endpoint ---
+router.get('/api/vapid-key', (req, res) => {
+  const key = getVapidPublicKey();
+  if (!key) return res.status(503).json({ error: 'Push not configured' });
+  res.json({ publicKey: key });
 });
 
 export default router;

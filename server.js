@@ -89,6 +89,7 @@ import { handlePhoneConnection } from './backend/phoneHandler.js';
 import { loadPhoneIndexFromDisk, buildPhoneIndex } from './backend/hotelincloud.js';
 import { loadPhoneCallContextsFromDisk } from './backend/phone.js';
 import { startScheduler, schedulePreArrivalMessages, schedulePostCheckoutMessages, scheduleArrivalChecklist } from './backend/scheduler.js';
+import { startProactiveEngine } from './backend/proactiveEngine.js';
 
 // ---------------------------------------------------------------------------
 // Express app + middleware
@@ -297,6 +298,9 @@ server.listen(PORT, () => {
 
   // Start scheduled message processor
   startScheduler();
+
+  // Start proactive companion engine (Trip Intelligence)
+  startProactiveEngine();
 
   // Refresh phone index every 30 minutes + re-scan for pre-arrival messages
   setInterval(() => buildPhoneIndex().then(() => {

@@ -1,5 +1,15 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
 node_modules
 dist
+dist-ssr
 *.local
 
 # Environment variables
@@ -7,22 +17,33 @@ dist
 .env.local
 .env.production
 
-# Data files (generated at runtime)
+# User data and session files
 data/*.json
 !data/.gitkeep
+!data/florence_pois.json
 
-# Editor
-.vscode
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
 .idea
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 *.sw?
 
-# Keys
-*.pem
+# Test files
+test_*.cjs
+test_image.jpg
 
-# Built assets
-assets/
-
-# Backups
+# Backups (may contain historical secrets)
 backups/
-server.js.backup
+
+# WhatsApp Flows RSA keys
+flows_private.pem
+flows_public.pem
+
+# Claude Code
+CLAUDE.md
+.claude/

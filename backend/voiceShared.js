@@ -17,15 +17,22 @@ export function trimToolResultForVoice(toolName, result) {
   if (toolName === 'check_room_availability' && trimmed.booking_payload) {
     try {
       const payload = typeof trimmed.booking_payload === 'string' ? JSON.parse(trimmed.booking_payload) : trimmed.booking_payload;
-      const summary = (payload.options || []).map(opt => ({
-        name: opt.name, available: opt.available_count,
-        rates: (opt.rates || []).map(r => ({ name: r.name, price: r.price || `€${r.raw_price}`, non_refundable: r.non_refundable }))
-      }));
-      trimmed.rooms_summary = summary;
+      // Build plain-text summary so Gemini Live reads exact prices without parsing JSON
+      const lines = [];
+      lines.push(`Hotel: ${payload.hotel_name}, ${payload.nights} night${payload.nights > 1 ? 's' : ''}`);
+      if (payload.city_tax) lines.push(`City tax: €${payload.city_tax}/person/night (not included in room price)`);
+      for (const opt of (payload.options || [])) {
+        lines.push(`\nRoom: ${opt.name} — ${opt.available_count} available`);
+        for (const r of (opt.rates || [])) {
+          const price = r.price || `€${r.raw_price}`;
+          const refund = r.non_refundable ? ' (non-refundable)' : ' (free cancellation 72h before)';
+          lines.push(`  ${r.name}: ${price} total${refund}`);
+        }
+      }
+      lines.push(`\nIMPORTANT: Tell the guest the EXACT prices listed above. When the guest is interested, use create_personalized_quotation to send them a booking link via WhatsApp.`);
+      trimmed.spoken_summary = lines.join('\n');
       trimmed.hotel = payload.hotel_name;
       trimmed.nights = payload.nights;
-      trimmed.city_tax = payload.city_tax;
-      trimmed.taxable_guests = payload.taxable_guests;
       delete trimmed.booking_payload;
     } catch { /* keep original if parse fails */ }
     delete trimmed.other_options;
@@ -33,6 +40,9 @@ export function trimToolResultForVoice(toolName, result) {
   if (toolName === 'create_personalized_quotation') {
     delete trimmed.booking_payload;
     delete trimmed.other_options;
+  }
+  if (toolName === 'visual_identification') {
+    return trimmed; // Small result, pass through to Gemini
   }
   return trimmed;
 }
