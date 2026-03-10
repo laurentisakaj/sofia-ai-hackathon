@@ -1,6 +1,6 @@
 # Sofia AI — Live Multimodal Concierge for Hotels
 
-**A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone calls, WhatsApp, and web chat — executing 16 live tools in real-time. Powered by Gemini Live API, deployed on Google Cloud Run, serving 6 real hotels in Florence, Italy.**
+**A live, multimodal AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone calls, WhatsApp, and web chat — executing 23 live tools with Google Search grounding. Powered by Gemini Live API, deployed on Google Cloud Run.**
 
 > Built for the [Gemini Live Agent Challenge](https://geminiliveagentchallenge.devpost.com/) — Category: **Live Agents**
 
@@ -30,19 +30,20 @@ Sofia is a **live, multimodal AI agent** that doesn't just answer questions — 
 | **WhatsApp** | Meta Cloud API + Interactive Flows | Voice/image messages, booking forms, tour selection, feedback |
 | **Web Chat** | Gemini 3 Flash + rich cards | Text with booking options, maps, tours, itineraries, weather |
 
-### 16 Live Tools (Real-time)
+### 23 Live Tools (Real-time)
 
 During any conversation — voice, video, phone, or text — Sofia executes real actions:
 
 | Tool | What it does |
 |------|-------------|
-| `check_room_availability` | Real-time pricing across 6 properties via HotelInCloud API |
+| `check_room_availability` | Real-time pricing across multiple properties via HotelInCloud API |
 | `create_personalized_quotation` | Booking offers with direct payment links |
 | `lookup_reservation` | Search by guest name, booking code, Booking.com/Expedia confirmation |
 | `add_reservation_note` | Add staff notes to existing reservations |
 | `get_partner_tours` | Search 50+ Florence tours via Bokun API with booking links |
 | `build_itinerary` | Visual day-by-day itinerary cards |
 | `trigger_whatsapp_flow` | Send interactive WhatsApp forms (booking, check-in, tours, feedback) |
+| `google_search_grounding` | Real-time web search for current events, exhibitions, and local info |
 | `get_current_weather` | Live weather data |
 | `find_nearby_places` | Google Places API for restaurants, attractions, pharmacies |
 | `get_public_transport_info` | Google Directions API for transit routes |
@@ -52,12 +53,19 @@ During any conversation — voice, video, phone, or text — Sofia executes real
 | `send_support_message` | Email to hotel reception |
 | `get_human_handoff_links` | Contact info for human staff |
 | `propose_knowledge_update` | AI-suggested knowledge base additions |
+| `enable_proactive_companion` | Opt-in to Trip Intelligence Engine for personalized tips |
+| `visual_identification` | Sofia Lens — AR landmark, menu, and object identification via camera |
+| `compare_hotels` | Side-by-side property comparison with pricing and amenities |
+| `save_guest_preferences` | Persist preferences across channels and sessions |
+| `send_whatsapp_message` | Cross-channel WhatsApp with template fallback |
+| `escalate_to_human` | Handoff to staff with full conversation context |
 
 ### Multimodal "See, Hear, Speak" Features
 
 - **Affective Dialog** — Adapts tone based on guest emotional state (stressed guests get calmer responses)
 - **Proactive Audio** — Intelligently interjects with helpful info during conversation pauses
 - **Non-blocking Tool Calls** — Keeps talking while slow APIs execute, then interrupts with results
+- **Sofia Lens (AR)** — Point camera at landmarks, menus, or objects for instant identification with AR overlay tags
 - **Camera + GPS** — Guests show menus for translation, landmarks for identification, with location-aware directions
 - **Screen Sharing** — Share browser tabs or documents for real-time visual understanding
 - **Adjustable Speech Speed** — Normal (1x), slow (0.5x), or fast (1.5x)
@@ -65,6 +73,8 @@ During any conversation — voice, video, phone, or text — Sofia executes real
 - **Predictive Preferences** — Analyzes booking history (preferred hotel, room type, travel month)
 - **Multilingual** — Auto-detects language from content or country code (Italian, English, French, German, Spanish)
 - **WhatsApp Flows** — Native interactive forms for booking, check-in, tour selection, and feedback
+- **Trip Intelligence Engine** — Proactive daily briefings, weather alerts, location-aware tips via WhatsApp/Web Push
+- **Google Search Grounding** — Real-time web search for current Florence events and exhibitions
 
 ## Architecture
 
@@ -166,7 +176,7 @@ sofia-ai-hackathon/
 ├── Dockerfile                # Multi-stage build for Cloud Run
 ├── backend/
 │   ├── gemini.js             # System prompt, tool declarations, context caching
-│   ├── tools.js              # executeToolCall() — central 16-tool dispatcher
+│   ├── tools.js              # executeToolCall() — central 23-tool dispatcher
 │   ├── hotelincloud.js       # Hotel booking API client (auth, reservations, quotations)
 │   ├── voiceHandler.js       # /ws/voice WebSocket (Gemini Live + camera + GPS)
 │   ├── phoneHandler.js       # /ws/phone WebSocket (SIP phone calls)
@@ -224,7 +234,7 @@ sofia-ai-hackathon/
 1. Guest calls hotel → no answer → Messagenet VoIP forwards to Sofia
 2. `sip-register.js` answers (SIP REGISTER + INVITE), extracts caller number
 3. `sip-bridge.js` bridges RTP audio: G.711 u-law 8kHz → PCM 16kHz → WebSocket
-4. Server proxies to Gemini Live with all 16 tools available
+4. Server proxies to Gemini Live with all 23 tools available
 5. Caller identified? Sofia greets by name ("Buongiorno, Signor Rossi!")
 6. After call: transcript emailed to staff, WhatsApp follow-up with booking link
 

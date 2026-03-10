@@ -1,16 +1,16 @@
 Sofia AI — Live Multimodal Concierge for Hotels
 
-A production AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 23 live tools with Google Search grounding. Deployed on Google Cloud Run, serving 6 real hotels in Florence.
+A live, multimodal AI concierge that sees, hears, and speaks with hotel guests across 5 channels — voice, video, phone, WhatsApp, and chat — executing 23 live tools with Google Search grounding. Deployed on Google Cloud Run.
 
 ## Inspiration
 
-We run 6 hotels and our reception desks close at night. Guests calling after hours would reach voicemail: frustrated travelers needing directions, late check-in instructions, or last-minute booking changes. We wanted an AI that could actually _do things_, not just chat. Sofia needed to answer real phone calls, check live availability, create booking offers with payment links, and speak naturally in the guest's language.
+Hotel front desks close at night. Guests calling after hours reach voicemail: frustrated travelers needing directions, late check-in instructions, or last-minute booking changes. We wanted an AI that could actually _do things_, not just chat. Sofia needed to answer real phone calls, check live availability, create booking offers with payment links, and speak naturally in the guest's language.
 
 When Google released the Gemini Live API with native audio and non-blocking function calls, we saw the opportunity to build something that feels like talking to a real concierge, one who can multitask, remember guests, and never sleep.
 
 ## What it does
 
-Sofia is a **production AI concierge** running 24/7 across our 6 Florence hotels: Palazzina Fusi, Hotel Lombardia, Hotel Arcadia, Hotel Villa Betania, L'Antica Porta, and Residenza Ognissanti. She operates across five live channels simultaneously.
+Sofia is a **live AI concierge** for hotels in Florence. She operates across five channels simultaneously.
 
 **🎙️ Voice Mode:** Real-time conversations using Gemini Live API. Sofia adapts her speaking pace and tone in real-time based on the guest's emotional state via affective dialog. Guests can adjust speech speed to normal, slow, or fast.
 
@@ -38,7 +38,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 ### The 23 Live Tools Sofia Executes in Real-Time
 
-1. **Room Availability:** Live pricing across all 6 properties via HotelInCloud API, with rate comparison vs Booking.com
+1. **Room Availability:** Live pricing across multiple properties via HotelInCloud API, with rate comparison vs Booking.com
 2. **Personalized Quotations:** Creates real booking offers with payment links, sent to guest email
 3. **Reservation Lookup:** Finds bookings by guest name, booking code, or OTA confirmation number from Booking.com and Expedia
 4. **Reservation Notes:** Adds staff notes to any reservation including special requests, arrival info, and preferences
@@ -50,7 +50,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 10. **Weather:** Live forecasts via Open-Meteo API
 11. **Train Schedules:** Real-time departures from Firenze Santa Maria Novella with platform numbers and delay status
 12. **Public Transport:** Google Directions API for bus and tram routes across Florence
-13. **Hotel Location:** Maps, verified entrance photos, and turn-by-turn directions for all 6 properties
+13. **Hotel Location:** Maps, verified entrance photos, and turn-by-turn directions for any property
 14. **Florence Events:** Local calendar for concerts, exhibitions, and markets
 15. **Support Email:** Sends messages directly to hotel reception on the guest's behalf
 16. **Human Handoff:** Provides direct staff contact info and transfers the conversation to a human when the situation requires it
@@ -84,7 +84,7 @@ Sofia is not a generic assistant. She has a defined identity: a warm, profession
 
 ### Grounding and Hallucination Prevention
 
-This is a production system handling real money and real guests. Sofia is strictly grounded at every level.
+Sofia handles real bookings and real guests. She is strictly grounded at every level.
 
 Room prices and availability always come from the live HotelInCloud API, never from memory. Reservation details are fetched in real-time, never assumed. Local recommendations use Google Places API ratings and live open/closed status. Train schedules are scraped from live departure boards at the moment of the request. For time-sensitive questions about current exhibitions, events, or restaurant openings, Sofia uses Google Search grounding to pull live web results rather than relying on potentially stale knowledge. When Sofia does not know something, she proposes a knowledge base update rather than inventing an answer.
 
