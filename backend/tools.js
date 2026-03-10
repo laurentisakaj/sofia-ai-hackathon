@@ -339,7 +339,7 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
     }
     case 'send_whatsapp_message': {
       let phoneNumber = (args.phone_number || '').replace(/[^0-9+]/g, '').replace(/^\+/, '');
-      // Handle SIP URIs (e.g. sip:393313165783@91.98.45.18)
+      // Handle SIP URIs (e.g. sip:393313165783@host)
       if (args.phone_number && args.phone_number.includes('@')) {
         phoneNumber = args.phone_number.replace(/^sip:/, '').split('@')[0].replace(/[^0-9]/g, '');
       }
@@ -420,7 +420,7 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
 
         // Extract booking link from the message (first https URL)
         const urlMatch = waMessage.match(/(https:\/\/[^\s,)]+)/);
-        const bookingLink = urlMatch ? urlMatch[1] : 'https://ai.ognissantihotels.com';
+        const bookingLink = urlMatch ? urlMatch[1] : (process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
 
         // Use the full message as details (truncated to 1024 chars for template param limit)
         // IMPORTANT: Meta rejects template params with newlines/tabs/4+ consecutive spaces

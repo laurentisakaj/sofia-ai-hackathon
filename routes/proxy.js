@@ -529,7 +529,7 @@ router.get('/api/track/booking/:trackingId', (req, res) => {
   const { trackingId } = req.params;
   const tracking = bookingTrackingMap.get(trackingId);
   if (!tracking) {
-    return res.redirect('https://ai.ognissantihotels.com');
+    return res.redirect(process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
   }
 
   // Log the click
@@ -565,10 +565,10 @@ router.get('/api/track/booking/:trackingId', (req, res) => {
     const url = new URL(tracking.bookingLink);
     if (!allowedHosts.includes(url.hostname)) {
       console.warn(`[BOOKING CLICK] Blocked redirect to disallowed host: ${url.hostname}`);
-      return res.redirect('https://ai.ognissantihotels.com');
+      return res.redirect(process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
     }
   } catch {
-    return res.redirect('https://ai.ognissantihotels.com');
+    return res.redirect(process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
   }
   res.redirect(tracking.bookingLink);
 });

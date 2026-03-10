@@ -184,8 +184,9 @@ Sofia Phone Agent`;
       }];
       console.log(`[PHONE POST-CALL] ${call_id}: Attaching recording (${(fs.statSync(callData.recordingPath).size / 1024 / 1024).toFixed(1)}MB)`);
     }
-    await sendEmail('laurent@ognissantihotels.com', emailSubject, emailBody, emailOpts);
-    console.log(`[PHONE POST-CALL] ${call_id}: Email sent to laurent@ognissantihotels.com`);
+    const adminEmail = 'laurent@ognissantihotels.com';
+    await sendEmail(adminEmail, emailSubject, emailBody, emailOpts);
+    console.log(`[PHONE POST-CALL] ${call_id}: Email sent to ${adminEmail}`);
   } catch (err) {
     console.error(`[PHONE POST-CALL] ${call_id}: Failed to email:`, err.message);
   }

@@ -31,7 +31,7 @@ if (fs.existsSync(envPath)) {
 }
 
 const HTTP_PORT = parseInt(process.env.SIP_BRIDGE_HTTP_PORT || '5072');
-const PUBLIC_IP = process.env.PUBLIC_IP || '91.98.45.18';
+const PUBLIC_IP = process.env.PUBLIC_IP || '0.0.0.0';
 const WEBHOOK_SECRET = process.env.PHONE_WEBHOOK_SECRET;
 if (!WEBHOOK_SECRET) {
   console.error('[SIP-BRIDGE] FATAL: PHONE_WEBHOOK_SECRET environment variable is not set');

@@ -376,7 +376,7 @@ const EmbedChatInterface: React.FC<EmbedChatInterfaceProps> = ({ onClose, embedd
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full overflow-hidden bg-amber-500 flex items-center justify-center shadow-sm flex-shrink-0">
             <img
-              src="https://ai.ognissantihotels.com/sofia_avatar.png"
+              src="/sofia_avatar.png"
               alt="Sofia"
               className="w-full h-full object-cover object-top"
               onError={(e) => {

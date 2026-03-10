@@ -172,7 +172,7 @@ export async function handleVoiceConnection(ws, req) {
   healthMetrics.totalRequests.voice++;
   // Origin validation — reject missing origin in production
   const origin = req.headers.origin || '';
-  const allowedOrigins = ['https://ai.ognissantihotels.com', 'http://localhost:5173'];
+  const allowedOrigins = [process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app', 'http://localhost:5173'];
   if (process.env.BASE_URL && !allowedOrigins.includes(process.env.BASE_URL)) allowedOrigins.push(process.env.BASE_URL);
   if (!origin || !allowedOrigins.includes(origin)) {
     console.log(`[VOICE] Rejected connection — origin: ${origin || '(none)'}`);

@@ -4,7 +4,7 @@
  * Matches existing Squarespace widget design with Sofia AI chat option
  * 
  * Usage:
- *   <script src="https://ai.ognissantihotels.com/widget.js" defer></script>
+ *   <script src="https://sofia-ai-942607221166.europe-west1.run.app/widget.js" defer></script>
  */
 
 (function () {
@@ -12,7 +12,7 @@
 
   // Configuration
   const config = Object.assign({
-    baseUrl: 'https://ai.ognissantihotels.com',
+    baseUrl: 'https://sofia-ai-942607221166.europe-west1.run.app',
     whatsapp: 'https://wa.me/390550682335',
     sms: '', // Default empty (hidden)
     brandColor: '#A3826C',
