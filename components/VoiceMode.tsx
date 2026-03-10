@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createBlob, decode, decodeAudioData } from './orb/utils';
 import './orb/visual-canvas';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin, Thermometer, Coffee, Lock, Wifi, Droplets, Tv, Eye, Snowflake, Clock, Church, Sun, Moon, KeyRound, Info, AlertTriangle, Star, Phone } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, X, Gauge, SwitchCamera, MapPin, Thermometer, Coffee, Lock, Wifi, Droplets, Tv, Eye, Snowflake, Clock, Church, Sun, Moon, KeyRound, Info, AlertTriangle, Star, Phone, ChevronDown } from 'lucide-react';
 
 /// <reference types="vite/client" />
 
@@ -944,121 +944,53 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 />
             )}
 
-            {/* ── Camera: scanning sweep (when user speaks + camera on) ── */}
-            {cam && isScanning && liveTags.length === 0 && (
-                <div className="absolute inset-0 z-[6] pointer-events-none">
-                    <div className="absolute left-0 right-0 h-[2px]" style={{
-                        background: 'linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.6) 20%, rgba(245,158,11,0.8) 50%, rgba(245,158,11,0.6) 80%, transparent 100%)',
-                        boxShadow: '0 0 12px 2px rgba(245,158,11,0.3)',
-                        animation: 'scan-sweep 2s ease-in-out infinite',
-                    }} />
-                </div>
-            )}
-
-            {/* ── Camera: live AR tags pinned on identified objects ── */}
+            {/* ── Camera: compact identification panel (bottom sheet) ── */}
             {cam && liveTags.length > 0 && (
-                <div className="absolute inset-0 z-[7]">
-                    {liveTags.map(tag => {
-                        const isExpanded = expandedTag === tag.id;
-                        const emoji = idTypeEmoji[tag.object_type] || '\uD83D\uDD0D';
-                        return (
-                            <div key={tag.id}>
-                                {/* Annotation markers — numbered dots pinned on object parts */}
-                                {tag.markers.length > 0 && tag.markers.map((marker, mi) => {
-                                    // Shift markers by the same delta as tag center (MediaPipe tracking)
-                                    const markerX = marker.x + (tag.position_x - tag._originalX);
-                                    const markerY = marker.y + (tag.position_y - tag._originalY);
-                                    return (
-                                    <div
-                                        key={`${tag.id}-m${mi}`}
-                                        className="absolute pointer-events-none"
-                                        style={{
-                                            left: `${markerX}%`,
-                                            top: `${markerY}%`,
-                                            transform: 'translate(-50%, -50%)',
-                                            transition: 'left 0.1s linear, top 0.1s linear',
-                                            animation: `marker-appear 0.3s ease-out ${mi * 0.15}s both`,
-                                        }}
-                                    >
-                                        {/* Glow ring */}
-                                        <div className="absolute -inset-2 rounded-full" style={{
-                                            background: 'radial-gradient(circle, rgba(245,158,11,0.25) 0%, transparent 70%)',
-                                            animation: 'tag-pulse 2s ease-in-out infinite',
-                                        }} />
-                                        {/* Numbered circle */}
-                                        <div className="relative flex items-center justify-center w-6 h-6 rounded-full border-2 border-amber-400 bg-black/70 backdrop-blur-sm shadow-lg" style={{
-                                            boxShadow: '0 0 10px rgba(245,158,11,0.4), 0 2px 6px rgba(0,0,0,0.5)',
-                                        }}>
-                                            <span className="text-amber-400 text-[10px] font-bold">{marker.step || mi + 1}</span>
-                                        </div>
-                                        {/* Label */}
-                                        <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 whitespace-nowrap">
-                                            <span className="text-[10px] font-semibold text-white bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-400/20" style={{
-                                                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
-                                            }}>{marker.label}</span>
-                                        </div>
-                                    </div>
-                                    );
-                                })}
-
-                                {/* Floating tag pill — pinned at object position */}
-                                <div
-                                    className="absolute pointer-events-auto"
-                                    style={{
-                                        left: `${tag.position_x}%`,
-                                        top: `${tag.position_y}%`,
-                                        transform: 'translate(-50%, -100%) translateY(-12px)',
-                                        transition: 'left 0.1s linear, top 0.1s linear',
-                                        animation: 'tag-appear 0.4s ease-out',
-                                    }}
-                                >
-                                    {/* Tag pill */}
+                <div className="absolute bottom-28 left-2 right-2 z-[7]" style={{ animation: 'panel-slide-up 0.3s ease-out' }}>
+                    <div className="bg-black/70 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
+                        {liveTags.map(tag => {
+                            const isExpanded = expandedTag === tag.id;
+                            const emoji = idTypeEmoji[tag.object_type] || '\uD83D\uDD0D';
+                            return (
+                                <div key={tag.id} className="border-b border-white/5 last:border-b-0">
+                                    {/* Tag row */}
                                     <button
                                         onClick={() => { setExpandedTag(isExpanded ? null : tag.id); setExpandedAction(null); }}
-                                        className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md border transition-all active:scale-95"
-                                        style={{
-                                            background: isExpanded ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.55)',
-                                            borderColor: isExpanded ? 'rgba(245,158,11,0.6)' : 'rgba(245,158,11,0.35)',
-                                            boxShadow: '0 2px 12px rgba(0,0,0,0.4), 0 0 8px rgba(245,158,11,0.15)',
-                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-white/5 active:bg-white/10"
                                     >
-                                        <span className="text-sm">{emoji}</span>
-                                        <span className="text-white text-[11px] font-semibold whitespace-nowrap max-w-[120px] truncate">{tag.object_name}</span>
+                                        <span className="text-base">{emoji}</span>
+                                        <div className="flex-1 text-left min-w-0">
+                                            <span className="text-white text-[12px] font-semibold truncate block">{tag.object_name}</span>
+                                            {tag.location_context && (
+                                                <span className="text-white/40 text-[10px] truncate block">{tag.location_context}</span>
+                                            )}
+                                        </div>
+                                        <ChevronDown size={14} className={`text-white/40 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                     </button>
-                                    {/* Connecting line from pill to object center */}
-                                    <div className="absolute left-1/2 bottom-0 w-[1px] h-3 bg-amber-400/40" />
-                                </div>
 
-                                {/* Expanded detail panel — slides up from tag */}
-                                {isExpanded && (
-                                    <div className="absolute z-[8] pointer-events-auto" style={{
-                                        left: `clamp(0.75rem, calc(${tag.position_x}% - 9rem), calc(100% - 18.75rem))`,
-                                        top: `clamp(3rem, calc(${tag.position_y}% - 10rem), 60%)`,
-                                        width: '18rem',
-                                        maxWidth: 'calc(100% - 1.5rem)',
-                                        animation: 'badge-in 0.3s ease-out',
-                                    }}>
-                                        <div className="bg-black/65 backdrop-blur-xl rounded-2xl border border-amber-400/30 overflow-hidden shadow-2xl">
-                                            <div className="flex items-start gap-2.5 p-3 pb-1.5">
-                                                <div className="flex-1 min-w-0">
-                                                    <h3 className="text-white font-semibold text-sm leading-tight">{tag.object_name}</h3>
-                                                    {tag.location_context && (
-                                                        <span className="text-white/50 text-[10px]">{tag.location_context}</span>
-                                                    )}
+                                    {/* Expanded detail */}
+                                    {isExpanded && (
+                                        <div className="px-3 pb-3" style={{ animation: 'badge-in 0.2s ease-out' }}>
+                                            <p className="text-white/70 text-[11px] leading-relaxed mb-2 line-clamp-3">{tag.description}</p>
+                                            {tag.markers.length > 0 && (
+                                                <div className="space-y-1 mb-2">
+                                                    {tag.markers.map((marker, mi) => (
+                                                        <div key={mi} className="flex items-center gap-2">
+                                                            <div className="flex items-center justify-center w-5 h-5 rounded-full border border-amber-400/50 bg-amber-400/10">
+                                                                <span className="text-amber-400 text-[9px] font-bold">{marker.step || mi + 1}</span>
+                                                            </div>
+                                                            <span className="text-white/80 text-[11px]">{marker.label}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                <button
-                                                    onClick={() => setExpandedTag(null)}
-                                                    className="text-white/40 hover:text-white/80 p-0.5 transition-colors"
-                                                ><X size={14} /></button>
-                                            </div>
-                                            <p className="text-white/70 text-[11px] leading-relaxed px-3 pb-2 line-clamp-3">{tag.description}</p>
+                                            )}
                                             {tag.actions.length > 0 && (
-                                                <div className="px-3 pb-3 space-y-1.5">
+                                                <div className="space-y-1.5">
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {tag.actions.map((action, idx) => (
                                                             <button
                                                                 key={idx}
-                                                                onClick={() => setExpandedAction(expandedAction === idx ? null : idx)}
+                                                                onClick={(e) => { e.stopPropagation(); setExpandedAction(expandedAction === idx ? null : idx); }}
                                                                 className={`text-[10px] font-medium px-2 py-1 rounded-full transition-all active:scale-95 ${
                                                                     expandedAction === idx ? 'bg-amber-500/90 text-white' : 'bg-white/15 text-white/90'
                                                                 }`}
@@ -1069,7 +1001,8 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                                                         <div className="bg-white/10 rounded-xl p-2 mt-1">
                                                             <p className="text-white/80 text-[11px] leading-relaxed">{tag.actions[expandedAction].instruction}</p>
                                                             <button
-                                                                onClick={() => {
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
                                                                     if (wsRef.current?.readyState === WebSocket.OPEN) {
                                                                         wsRef.current.send(JSON.stringify({ type: 'text', text: `Show me how to: ${tag.actions[expandedAction!].instruction}` }));
                                                                     }
@@ -1082,26 +1015,23 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
             {/* Shared keyframes */}
             <style>{`
-                @keyframes tag-appear { 0% { transform: translate(-50%, -100%) translateY(-12px) scale(0); opacity: 0; } 50% { transform: translate(-50%, -100%) translateY(-12px) scale(1.1); } 100% { transform: translate(-50%, -100%) translateY(-12px) scale(1); opacity: 1; } }
-                @keyframes marker-appear { 0% { transform: translate(-50%, -50%) scale(0); opacity: 0; } 60% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
-                @keyframes tag-pulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0; } }
+                @keyframes panel-slide-up { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
                 @keyframes badge-in { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
                 @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
-                @keyframes scan-sweep { 0% { top: 5%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 95%; opacity: 0; } }
             `}</style>
 
             {/* ── Camera: quick-action pills (near hotel, no active identification) ── */}
-            {cam && nearHotel && liveTags.length === 0 && !isScanning && (
+            {cam && nearHotel && liveTags.length === 0 && (
                 <div className="absolute top-16 left-3 right-3 z-[7]">
                     <div className="flex items-center gap-1.5 mb-2">
                         <Eye size={12} className="text-white/50" />
