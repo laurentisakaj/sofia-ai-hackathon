@@ -106,7 +106,7 @@ During any conversation — voice, video, phone, or text — Sofia executes real
 
 - Node.js 22+
 - A [Gemini API key](https://aistudio.google.com/apikey)
-- Docker (for Cloud Run deployment)
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install) (for Cloud Run deployment — no Docker required)
 
 ### Local Development
 
@@ -144,25 +144,12 @@ The app runs at `http://localhost:5173` (frontend) proxying to `http://localhost
 ### Deploy to Google Cloud Run
 
 ```bash
-# Automated deployment (recommended)
+# One-click deployment (no Docker required — builds in the cloud)
 ./deploy-gcp.sh YOUR_PROJECT_ID europe-west1
 
-# Or manually:
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com
-
-docker build --platform linux/amd64 -t europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/sofia-ai/sofia-ai:latest .
-docker push europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/sofia-ai/sofia-ai:latest
-
-gcloud run deploy sofia-ai \
-  --image=europe-west1-docker.pkg.dev/YOUR_PROJECT_ID/sofia-ai/sofia-ai:latest \
-  --region=europe-west1 \
-  --allow-unauthenticated \
-  --port=8080 \
-  --memory=512Mi \
-  --timeout=3600 \
-  --session-affinity \
+# Then set your API key:
+gcloud run services update sofia-ai \
+  --region=europe-west1 --project=YOUR_PROJECT_ID \
   --set-env-vars="GEMINI_API_KEY=your_key,COOKIE_SECRET=$(openssl rand -hex 32)"
 ```
 
