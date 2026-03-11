@@ -78,7 +78,7 @@ During any conversation — voice, video, phone, or text — Sofia executes real
 
 ## Google Cloud Deployment Proof
 
-[Watch the Cloud Run deployment video](cloud-run-deployment.mov) — shows the live service running on Google Cloud Run, Cloud Build history, and server logs.
+[Watch the Cloud Run deployment video](cloud-run-deployment.mp4) — shows the live service running on Google Cloud Run, Cloud Build history, and server logs.
 
 ## Architecture
 
