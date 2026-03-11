@@ -973,7 +973,7 @@ Ognissanti Hotels Group
       } else {
         console.warn(`[QUOTATION] No crypto_id in response for ${quotationId}`);
       }
-      quotationLink = `${process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app'}/q/${propertyId}/${quotationId}`;
+      quotationLink = `https://ai.ognissantihotels.com/q/${propertyId}/${quotationId}`;
     }
 
     // Log the quotation creation (mask email for privacy)

@@ -573,7 +573,7 @@ export async function handlePhoneConnection(ws, req) {
               const isSuccess = resp?.response?.success === 'true' || resp?.response?.booking_link || resp?.response?.quotation_link;
               if (isSuccess) {
                 try {
-                  const bookingLink = resp.response.booking_link || resp.response.quotation_link || (process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
+                  const bookingLink = resp.response.booking_link || resp.response.quotation_link || (process.env.BASE_URL || 'https://ai.ognissantihotels.com');
                   const hotelName = call.args.hotel_name || 'Ognissanti Hotels';
                   const gName = call.args.guest_name || guestName || 'Guest';
                   const checkIn = call.args.check_in || '';

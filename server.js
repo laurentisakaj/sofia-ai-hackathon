@@ -110,7 +110,7 @@ app.use((req, res, next) => {
 });
 
 // CORS
-const corsOrigins = [process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app'];
+const corsOrigins = ['https://ai.ognissantihotels.com'];
 if (process.env.BASE_URL && !corsOrigins.includes(process.env.BASE_URL)) corsOrigins.push(process.env.BASE_URL);
 if (process.env.NODE_ENV !== 'production') corsOrigins.push('http://localhost:5173');
 app.use(cors({
@@ -146,8 +146,8 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://*.hotelincloud.com https://*.googleusercontent.com https://*.gstatic.com https://*.googleapis.com https://*.ggpht.com",
-    "connect-src 'self' wss://sofia-ai-942607221166.europe-west1.run.app https://sofia-ai-942607221166.europe-west1.run.app https://*.googleapis.com https://widgets.bokun.io https://open-meteo.com https://api.open-meteo.com",
-    "frame-ancestors 'self' https://*.run.app",
+    "connect-src 'self' wss://ai.ognissantihotels.com https://ai.ognissantihotels.com https://*.googleapis.com https://widgets.bokun.io https://open-meteo.com https://api.open-meteo.com",
+    "frame-ancestors 'self' https://*.ognissantihotels.com https://*.palazzinafusi.com https://*.hotellombardiafirenze.com https://*.hotelarcadiaflorence.com https://*.hotelvillabetania.it https://*.anticaporta.it https://*.residenzaognissanti.com",
   ].join('; '));
   next();
 });
