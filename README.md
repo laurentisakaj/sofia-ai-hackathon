@@ -76,6 +76,10 @@ During any conversation — voice, video, phone, or text — Sofia executes real
 - **Trip Intelligence Engine** — Proactive daily briefings, weather alerts, location-aware tips via WhatsApp/Web Push
 - **Google Search Grounding** — Real-time web search for current Florence events and exhibitions
 
+## Google Cloud Deployment Proof
+
+[Watch the Cloud Run deployment video](cloud-run-deployment.mov) — shows the live service running on Google Cloud Run, Cloud Build history, and server logs.
+
 ## Architecture
 
 ![Architecture Diagram](sofia-architecture-diagram.png)
