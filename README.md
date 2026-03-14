@@ -215,7 +215,7 @@ sofia-ai-hackathon/
 
 1. User taps microphone (voice) or camera (video) button → consent modal for permissions
 2. Frontend captures audio via `getUserMedia`, streams PCM chunks over WebSocket to `/ws/voice`
-3. In video mode: camera frames captured at 1 FPS as JPEG, GPS coordinates sent alongside
+3. In video mode: camera frames captured at 2 FPS as JPEG, GPS coordinates sent alongside
 4. Server connects to Gemini Live API (`gemini-2.5-flash-native-audio-preview`) with bidirectional streaming
 5. When Gemini calls a tool, server executes via `executeToolCall()` with `NON_BLOCKING` behavior
 6. Sofia speaks results naturally, continues talking during slow API calls

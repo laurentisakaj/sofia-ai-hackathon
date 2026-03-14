@@ -697,7 +697,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                 clearInterval(videoIntervalRef.current);
             }
 
-            // Capture frames at ~1 FPS (sufficient for showing context)
+            // Capture frames at 2 FPS for smooth real-time visual context
             videoIntervalRef.current = setInterval(() => {
                 if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
                 if (!video || video.paused || video.ended) return;

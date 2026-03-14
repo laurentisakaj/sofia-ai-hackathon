@@ -855,9 +855,21 @@ export async function handlePhoneConnection(ws, req) {
       try {
         const profile = await getGuestProfileByPhoneAsync(callerNumber) || await getGuestProfileByNameAsync(guestName);
         const email = profile?.email || `${callerNumber.replace(/[^0-9]/g, '')}@phone.ognissanti`;
+        // Build conversation summary from transcript
+        const interactions = profile?.recentInteractions || [];
+        const callSummary = transcript.slice(-6).map(t => `${t.role === 'user' ? 'Guest' : 'Sofia'}: ${(t.text || '').substring(0, 100)}`).join(' | ');
+        interactions.push({
+          channel: 'phone',
+          timestamp: new Date().toISOString(),
+          userMessage: callSummary.substring(0, 300),
+          sofiaReply: `[Phone call ${duration}s with ${hotelName || 'Ognissanti Hotels'}]`,
+        });
+        if (interactions.length > 10) interactions.splice(0, interactions.length - 10);
+
         await saveGuestProfileAsync(email, {
           name: guestName,
           phones: [callerNumber.replace(/[^0-9]/g, '')],
+          recentInteractions: interactions,
           past_stays: [...(profile?.past_stays || []), {
             hotel: hotelName || 'Ognissanti Hotels', dates: new Date().toISOString().split('T')[0], type: 'phone_call'
           }].filter((s, i, arr) => arr.findIndex(x => x.hotel === s.hotel && x.dates === s.dates && x.type === s.type) === i)

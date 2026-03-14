@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sofia Orb — Transparent</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; width: 800px; height: 800px; overflow: hidden; }
+  canvas { position: absolute; top: 0; left: 0; }
+  .channels { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+  .channel {
+    position: absolute;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(184,134,11,0.18);
+    padding: 10px 18px; border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500; color: #2C1810;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 9px;
+    box-shadow: 0 4px 16px rgba(44,24,16,0.10);
+    transform: translate(-50%, -50%);
+  }
+  .channel .ch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ch-voice .ch-dot { background: #D4A853; box-shadow: 0 0 6px rgba(212,168,83,0.5); }
+  .ch-video .ch-dot { background: #5EBB6F; box-shadow: 0 0 6px rgba(94,187,111,0.5); }
+  .ch-phone .ch-dot { background: #E8834A; box-shadow: 0 0 6px rgba(232,131,74,0.5); }
+  .ch-chat .ch-dot  { background: #6BA3D6; box-shadow: 0 0 6px rgba(107,163,214,0.5); }
+  .ch-wa .ch-dot    { background: #25D366; box-shadow: 0 0 6px rgba(37,211,102,0.5); }
+  .ch-tools .ch-dot { background: #B8860B; box-shadow: 0 0 6px rgba(184,134,11,0.5); }
+</style>
+</head>
+<body>
+<canvas id="c" width="1600" height="1600"></canvas>
+<div class="channels">
+  <div class="channel ch-voice" id="ch0"><span class="ch-dot"></span> Voice Mode</div>
+  <div class="channel ch-video" id="ch1"><span class="ch-dot"></span> Video + GPS</div>
+  <div class="channel ch-phone" id="ch2"><span class="ch-dot"></span> Phone Calls</div>
+  <div class="channel ch-chat" id="ch3"><span class="ch-dot"></span> Web Chat</div>
+  <div class="channel ch-wa" id="ch4"><span class="ch-dot"></span> WhatsApp</div>
+  <div class="channel ch-tools" id="ch5"><span class="ch-dot"></span> 23 Live Tools</div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const PARTICLE_COUNT = 500;
+const SIZE = 800;
+const cx = 400, cy = 400;
+const orbitR = 280;
+
+ctx.scale(2, 2); // retina
+
+const particles = [];
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const phi = Math.acos(1 - 2*(i+0.5)/PARTICLE_COUNT);
+  const theta = TAU * i / ((1+Math.sqrt(5))/2);
+  const v = Math.random();
+  let hue, sat, lit;
+  if (v < 0.5) { hue=36+Math.random()*8; sat=80+Math.random()*15; lit=50+Math.random()*20; }
+  else if (v < 0.8) { hue=25+Math.random()*15; sat=70+Math.random()*20; lit=45+Math.random()*15; }
+  else { hue=38+Math.random()*10; sat=30+Math.random()*30; lit=75+Math.random()*20; }
+  particles.push({ theta, phi, speed:0.2+Math.random()*0.4, size:1.4+Math.random()*2.2,
+    baseHue:hue, baseSat:sat, baseLit:lit, hue, sat, lit, brightness:0.5+Math.random()*0.5 });
+}
+
+const channelEls = []; for (let i=0;i<6;i++) channelEls.push(document.getElementById('ch'+i));
+const tagFloats = channelEls.map(()=>({ px:Math.random()*TAU, py:Math.random()*TAU, ax:3+Math.random()*4, ay:3+Math.random()*4 }));
+const dotRGB = [[212,168,83],[94,187,111],[232,131,74],[107,163,214],[37,211,102],[184,134,11]];
+
+const PHASES = [
+  {name:'idle',duration:3.5},{name:'listening',duration:4.0},
+  {name:'speaking',duration:5.0},{name:'idle',duration:2.5},
+  {name:'listening',duration:3.0},{name:'speaking',duration:6.0},
+];
+const TOTAL_CYCLE = PHASES.reduce((s,p)=>s+p.duration,0);
+
+function getState(t) {
+  const ct = t % TOTAL_CYCLE; let el=0;
+  for (const p of PHASES) {
+    if (ct < el+p.duration) {
+      const prog = (ct-el)/p.duration;
+      const eased = prog<0.15?prog/0.15:prog>0.85?(1-prog)/0.15:1;
+      return {phase:p.name, intensity:Math.min(1,Math.max(0,eased))};
+    }
+    el += p.duration;
+  }
+  return {phase:'idle',intensity:0};
+}
+
+let time=0, rotY=0, rotX=0, orbitAngle=0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = 0.016;
+  time += dt;
+
+  const state = getState(time);
+  const isL = state.phase==='listening'?state.intensity:0;
+  const isS = state.phase==='speaking'?state.intensity:0;
+
+  const listenE = isL*(0.5+Math.sin(time*6)*0.15+Math.sin(time*9.3)*0.1);
+  const speakE = isS*(0.6+Math.sin(time*3.5)*0.2+Math.sin(time*5.7)*0.12);
+  const idleE = (1-isL-isS)*(0.15+Math.sin(time*0.8)*0.1);
+  const totalE = Math.min(1, idleE+listenE*0.7+speakE);
+
+  const hueShift = isL*-12+isS*5;
+  const satBoost = isL*5+isS*15;
+  const litBoost = isL*-5+isS*12;
+  const sizeScale = 1+isS*0.12-isL*0.06;
+
+  for (const p of particles) {
+    p.hue=p.baseHue+hueShift; p.sat=Math.min(100,p.baseSat+satBoost); p.lit=p.baseLit+litBoost;
+  }
+
+  rotY += dt*(0.10+isS*0.25+listenE*0.05);
+  rotX += dt*(0.03+isS*0.06);
+  orbitAngle += dt*0.06;
+
+  const sphereR = 160*sizeScale*(1+totalE*0.18);
+  const coreHue = 40+hueShift;
+
+  // TRANSPARENT clear
+  ctx.clearRect(0,0,SIZE,SIZE);
+
+  // Core glow
+  const coreGrad = ctx.createRadialGradient(cx,cy,0,cx,cy,sphereR*0.9);
+  coreGrad.addColorStop(0, `hsla(${coreHue},${85+satBoost*0.3}%,${72+litBoost}%,${0.3+totalE*0.4})`);
+  coreGrad.addColorStop(0.3, `hsla(${coreHue-2},${80+satBoost*0.2}%,${58+litBoost*0.5}%,${0.15+totalE*0.25})`);
+  coreGrad.addColorStop(0.6, `hsla(${coreHue-5},70%,45%,${0.06+totalE*0.1})`);
+  coreGrad.addColorStop(1, 'hsla(30,60%,35%,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath(); ctx.arc(cx,cy,sphereR*0.9,0,TAU); ctx.fill();
+
+  // Haze
+  const hazeS = 1.6+isS*0.3;
+  const hazeGrad = ctx.createRadialGradient(cx,cy,sphereR*0.3,cx,cy,sphereR*hazeS);
+  hazeGrad.addColorStop(0, `hsla(${coreHue},65%,58%,${0.04+totalE*0.08})`);
+  hazeGrad.addColorStop(1, `hsla(${coreHue-5},50%,45%,0)`);
+  ctx.fillStyle = hazeGrad;
+  ctx.beginPath(); ctx.arc(cx,cy,sphereR*hazeS,0,TAU); ctx.fill();
+
+  // Speaking pulse
+  if (isS>0.1) {
+    const pR = sphereR*(1.1+Math.sin(time*4)*0.15);
+    const pGrad = ctx.createRadialGradient(cx,cy,pR*0.85,cx,cy,pR);
+    pGrad.addColorStop(0,'hsla(42,90%,65%,0)');
+    pGrad.addColorStop(0.5,`hsla(42,90%,65%,${isS*0.06})`);
+    pGrad.addColorStop(1,'hsla(38,85%,55%,0)');
+    ctx.fillStyle=pGrad; ctx.beginPath(); ctx.arc(cx,cy,pR,0,TAU); ctx.fill();
+  }
+
+  // Listening teal
+  if (isL>0.1) {
+    const lGrad = ctx.createRadialGradient(cx,cy,0,cx,cy,sphereR*0.6);
+    lGrad.addColorStop(0,`hsla(195,60%,65%,${isL*0.12})`);
+    lGrad.addColorStop(0.5,`hsla(200,50%,55%,${isL*0.05})`);
+    lGrad.addColorStop(1,'hsla(195,40%,45%,0)');
+    ctx.fillStyle=lGrad; ctx.beginPath(); ctx.arc(cx,cy,sphereR*0.6,0,TAU); ctx.fill();
+  }
+
+  // Rings
+  const rA = 0.04+totalE*0.04;
+  ctx.strokeStyle=`rgba(184,134,11,${rA})`; ctx.lineWidth=1;
+  [sphereR*1.2,sphereR*1.45].forEach(r=>{ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.stroke();});
+
+  // Connection lines
+  for (let i=0;i<6;i++) {
+    const angle = orbitAngle+(i*TAU/6);
+    const fx = Math.sin(time*0.5+tagFloats[i].px)*tagFloats[i].ax;
+    const fy = Math.cos(time*0.6+tagFloats[i].py)*tagFloats[i].ay;
+    const tx = cx+orbitR*Math.cos(angle)+fx;
+    const ty = cy+orbitR*Math.sin(angle)+fy;
+    const lA = 0.08+totalE*0.08;
+    const [r,g,b] = dotRGB[i];
+    const grad = ctx.createLinearGradient(cx,cy,tx,ty);
+    grad.addColorStop(0,'rgba(184,134,11,0)');
+    grad.addColorStop(0.35,`rgba(${r},${g},${b},${lA})`);
+    grad.addColorStop(0.75,`rgba(${r},${g},${b},${lA})`);
+    grad.addColorStop(1,'rgba(184,134,11,0)');
+    ctx.strokeStyle=grad; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(tx,ty); ctx.stroke();
+  }
+
+  // 3D
+  const cosRY=Math.cos(rotY),sinRY=Math.sin(rotY);
+  const cosRX=Math.cos(rotX),sinRX=Math.sin(rotX);
+
+  const projected = [];
+  for (const p of particles) {
+    const wave = Math.sin(p.theta*4+time*2)*Math.cos(p.phi*3+time*1.5);
+    const aW = isS>0?Math.sin(p.theta*6+time*4)*Math.cos(p.phi*5+time*3)*isS*0.12:0;
+    const lW = isL>0?Math.sin(p.theta*8+time*7)*isL*0.04:0;
+    const r = sphereR*(1+wave*totalE*0.18+aW+lW);
+    const sp = Math.sin(p.phi);
+    const ta = p.theta+time*p.speed*0.15;
+    let x=r*sp*Math.cos(ta),y=r*Math.cos(p.phi),z=r*sp*Math.sin(ta);
+    const x1=x*cosRY-z*sinRY,z1=x*sinRY+z*cosRY;
+    const y1=y*cosRX-z1*sinRX,z2=y*sinRX+z1*cosRX;
+    projected.push({x:cx+x1,y:cy+y1,z:z2,p});
+  }
+  projected.sort((a,b)=>a.z-b.z);
+
+  ctx.globalCompositeOperation='lighter';
+  for (const {x,y,z,p} of projected) {
+    const d=(z+sphereR)/(2*sphereR);
+    const alpha=(0.1+d*0.6)*(0.5+totalE*0.5)*p.brightness*(1+isS*0.4);
+    const size=p.size*(0.4+d*1.1)*(1+totalE*0.6);
+    const lit=p.lit+d*15+totalE*10;
+    const grad=ctx.createRadialGradient(x,y,0,x,y,size*2.5);
+    grad.addColorStop(0,`hsla(${p.hue},${p.sat}%,${lit}%,${alpha})`);
+    grad.addColorStop(0.5,`hsla(${p.hue},${p.sat-10}%,${lit-8}%,${alpha*0.4})`);
+    grad.addColorStop(1,`hsla(${p.hue},${p.sat-15}%,${lit-15}%,0)`);
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,size*2.5,0,TAU); ctx.fill();
+    if (d>0.5) {
+      ctx.fillStyle=`hsla(${p.hue},${p.sat}%,${Math.min(lit+20,95)}%,${alpha*0.8})`;
+      ctx.beginPath(); ctx.arc(x,y,size*0.6,0,TAU); ctx.fill();
+    }
+  }
+
+  // Filaments
+  const filA=0.03+totalE*0.06+isS*0.08;
+  const filD=25+isS*15;
+  const front=projected.filter(p=>p.z>0);
+  ctx.strokeStyle=`hsla(${40+hueShift},80%,65%,${filA})`; ctx.lineWidth=0.5;
+  for (let i=0;i<front.length;i++) {
+    const a=front[i];
+    for (let j=i+1;j<Math.min(i+8,front.length);j++) {
+      const b=front[j];
+      const dx=a.x-b.x,dy=a.y-b.y;
+      if (Math.sqrt(dx*dx+dy*dy)<filD){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+    }
+  }
+  ctx.globalCompositeOperation='source-over';
+
+  // Specular
+  const spX=cx-sphereR*0.25,spY=cy-sphereR*0.25;
+  const spGrad=ctx.createRadialGradient(spX,spY,0,spX,spY,sphereR*0.5);
+  spGrad.addColorStop(0,`hsla(45,50%,95%,${0.08+totalE*0.08})`);
+  spGrad.addColorStop(0.5,`hsla(42,40%,85%,${0.03+totalE*0.04})`);
+  spGrad.addColorStop(1,'hsla(40,30%,70%,0)');
+  ctx.fillStyle=spGrad; ctx.beginPath(); ctx.arc(spX,spY,sphereR*0.5,0,TAU); ctx.fill();
+
+  // Tags
+  for (let i=0;i<6;i++) {
+    const angle=orbitAngle+(i*TAU/6);
+    const bx=cx+orbitR*Math.cos(angle);
+    const by=cy+orbitR*Math.sin(angle);
+    const fx=Math.sin(time*0.5+tagFloats[i].px)*tagFloats[i].ax;
+    const fy=Math.cos(time*0.6+tagFloats[i].py)*tagFloats[i].ay;
+    channelEls[i].style.left=(bx+fx)+'px';
+    channelEls[i].style.top=(by+fy)+'px';
+  }
+}
+
+animate();
+</script>
+</body>
+</html>

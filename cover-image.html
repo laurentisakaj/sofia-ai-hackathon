@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Sofia AI Cover</title>
+<title>Sofia AI Cover — Animated</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -53,6 +53,12 @@
   .badge .dot {
     width: 7px; height: 7px; background: #5EBB6F; border-radius: 50%;
     box-shadow: 0 0 8px rgba(94,187,111,0.6);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 8px rgba(94,187,111,0.6); }
+    50% { box-shadow: 0 0 14px rgba(94,187,111,0.9); }
   }
 
   h1 {
@@ -125,7 +131,7 @@
     color: rgba(44,24,16,0.2);
   }
 
-  /* Channel cards — positioned by JS in a perfect hexagon */
+  /* Channel cards */
   .channels {
     position: absolute; left: 0; top: 0;
     width: 1600px; height: 900px;
@@ -144,6 +150,7 @@
     display: flex; align-items: center; gap: 10px;
     box-shadow: 0 4px 20px rgba(44,24,16,0.08);
     transform: translate(-50%, -50%);
+    transition: box-shadow 0.3s;
   }
 
   .channel .ch-dot {
@@ -205,32 +212,20 @@
 </div>
 
 <script>
-// Position channel cards in a perfect hexagon around center
-const centerX = 1150, centerY = 450;
-const radius = 290;
-const startAngle = -Math.PI / 2; // Start from top
+// === ANIMATED ORB + ORBITING CHANNEL TAGS ===
+// Simulates listening/speaking cycles with color shifts
 
-for (let i = 0; i < 6; i++) {
-  const angle = startAngle + (i * 2 * Math.PI / 6);
-  const x = centerX + radius * Math.cos(angle);
-  const y = centerY + radius * Math.sin(angle);
-  const el = document.getElementById('ch' + i);
-  el.style.left = x + 'px';
-  el.style.top = y + 'px';
-}
-
-// Render Sofia's particle orb
 const canvas = document.getElementById('orbCanvas');
 const ctx = canvas.getContext('2d');
 const TAU = Math.PI * 2;
 const PARTICLE_COUNT = 500;
-// Canvas is full-width (1600x900 CSS, 3200x1800 actual)
-// Orb center at (1150, 450) in CSS coords = right half center
+
 ctx.scale(2, 2);
-const cx = 1150, cy = 450;
 
-const sphereR = 900 * 0.22; // ~198px radius
+const cx = 1060, cy = 450;
+const baseRadius = 250;
 
+// --- Particles (Fibonacci sphere) ---
 const particles = [];
 for (let i = 0; i < PARTICLE_COUNT; i++) {
   const phi = Math.acos(1 - 2 * (i + 0.5) / PARTICLE_COUNT);
@@ -244,108 +239,271 @@ for (let i = 0; i < PARTICLE_COUNT; i++) {
   } else {
     hue = 38 + Math.random() * 10; sat = 30 + Math.random() * 30; lit = 75 + Math.random() * 20;
   }
-  particles.push({ theta, phi, speed: 0.2 + Math.random() * 0.4, size: 1.4 + Math.random() * 2.2, hue, sat, lit, brightness: 0.5 + Math.random() * 0.5 });
+  particles.push({
+    theta, phi,
+    speed: 0.2 + Math.random() * 0.4,
+    size: 1.4 + Math.random() * 2.2,
+    baseHue: hue, baseSat: sat, baseLit: lit,
+    hue, sat, lit,
+    brightness: 0.5 + Math.random() * 0.5
+  });
 }
 
-const time = 2.4, rotY = 0.65, rotX = 0.18, totalE = 0.35;
-
-// Core glow
-const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sphereR * 0.9);
-coreGrad.addColorStop(0, 'hsla(40, 85%, 72%, 0.45)');
-coreGrad.addColorStop(0.3, 'hsla(38, 80%, 58%, 0.22)');
-coreGrad.addColorStop(0.6, 'hsla(35, 70%, 45%, 0.08)');
-coreGrad.addColorStop(1, 'hsla(30, 60%, 35%, 0)');
-ctx.fillStyle = coreGrad;
-ctx.beginPath(); ctx.arc(cx, cy, sphereR * 0.9, 0, TAU); ctx.fill();
-
-// Outer haze
-const hazeGrad = ctx.createRadialGradient(cx, cy, sphereR * 0.3, cx, cy, sphereR * 1.6);
-hazeGrad.addColorStop(0, 'hsla(38, 65%, 58%, 0.08)');
-hazeGrad.addColorStop(1, 'hsla(35, 50%, 45%, 0)');
-ctx.fillStyle = hazeGrad;
-ctx.beginPath(); ctx.arc(cx, cy, sphereR * 1.6, 0, TAU); ctx.fill();
-
-// Orbital rings
-ctx.strokeStyle = 'rgba(184, 134, 11, 0.06)'; ctx.lineWidth = 1;
-[sphereR * 1.2, sphereR * 1.45].forEach(r => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke(); });
-ctx.setLineDash([4, 8]);
-ctx.strokeStyle = 'rgba(184, 134, 11, 0.04)';
-ctx.beginPath(); ctx.arc(cx, cy, sphereR * 1.75, 0, TAU); ctx.stroke();
-ctx.setLineDash([]);
-
-// Connection lines from center to hexagon points
-const dotColors = [
-  'rgba(212,168,83,0.12)', 'rgba(94,187,111,0.10)',
-  'rgba(232,131,74,0.10)', 'rgba(107,163,214,0.10)', 'rgba(37,211,102,0.10)',
-  'rgba(184,134,11,0.12)'
-];
+// --- Channel tag elements ---
+const channelEls = [];
 for (let i = 0; i < 6; i++) {
-  const angle = -Math.PI / 2 + (i * 2 * Math.PI / 6);
-  const tx = cx + radius * Math.cos(angle);
-  const ty = cy + radius * Math.sin(angle);
-  const grad = ctx.createLinearGradient(cx, cy, tx, ty);
-  grad.addColorStop(0, 'rgba(184,134,11,0.0)');
-  grad.addColorStop(0.35, dotColors[i]);
-  grad.addColorStop(0.75, dotColors[i]);
-  grad.addColorStop(1, 'rgba(184,134,11,0.0)');
-  ctx.strokeStyle = grad; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+  channelEls.push(document.getElementById('ch' + i));
+}
+// Per-tag gentle float for organic feel on top of orbit
+const tagFloats = channelEls.map(() => ({
+  phaseX: Math.random() * TAU,
+  phaseY: Math.random() * TAU,
+  ampX: 4 + Math.random() * 5,
+  ampY: 3 + Math.random() * 5
+}));
+
+// --- Connection line base colors (rgb only, alpha set dynamically) ---
+const dotRGB = [
+  [212,168,83], [94,187,111],
+  [232,131,74], [107,163,214], [37,211,102],
+  [184,134,11]
+];
+
+// ============================================
+// CONVERSATION STATE MACHINE
+// Cycles: idle → listening → speaking → idle
+// ============================================
+// Durations in seconds for each phase
+const PHASES = [
+  { name: 'idle',      duration: 3.5 },
+  { name: 'listening', duration: 4.0 },
+  { name: 'speaking',  duration: 5.0 },
+  { name: 'idle',      duration: 2.5 },
+  { name: 'listening', duration: 3.0 },
+  { name: 'speaking',  duration: 6.0 },
+];
+const TOTAL_CYCLE = PHASES.reduce((s, p) => s + p.duration, 0);
+
+function getConversationState(t) {
+  const cycleT = t % TOTAL_CYCLE;
+  let elapsed = 0;
+  for (const phase of PHASES) {
+    if (cycleT < elapsed + phase.duration) {
+      const progress = (cycleT - elapsed) / phase.duration; // 0..1 within phase
+      // Smooth ease in/out
+      const eased = progress < 0.15 ? progress / 0.15 :
+                    progress > 0.85 ? (1 - progress) / 0.15 : 1;
+      const smoothed = Math.min(1, Math.max(0, eased));
+      return { phase: phase.name, progress, intensity: smoothed };
+    }
+    elapsed += phase.duration;
+  }
+  return { phase: 'idle', progress: 0, intensity: 0 };
 }
 
-// 3D rotation
-const cosRY = Math.cos(rotY), sinRY = Math.sin(rotY);
-const cosRX = Math.cos(rotX), sinRX = Math.sin(rotX);
+// --- Animation state ---
+let time = 0;
+let rotY = 0;
+let rotX = 0;
+let orbitAngle = 0; // slow orbit rotation for tags
 
-const projected = [];
-for (const p of particles) {
-  const wave = Math.sin(p.theta * 4 + time * 2) * Math.cos(p.phi * 3 + time * 1.5);
-  const r = sphereR * (1 + wave * totalE * 0.18);
-  const sinPhi = Math.sin(p.phi);
-  const ta = p.theta + time * p.speed * 0.15;
-  let x = r * sinPhi * Math.cos(ta), y = r * Math.cos(p.phi), z = r * sinPhi * Math.sin(ta);
-  const x1 = x * cosRY - z * sinRY, z1 = x * sinRY + z * cosRY;
-  const y1 = y * cosRX - z1 * sinRX, z2 = y * sinRX + z1 * cosRX;
-  projected.push({ x: cx + x1, y: cy + y1, z: z2, p });
-}
-projected.sort((a, b) => a.z - b.z);
+function animate() {
+  requestAnimationFrame(animate);
 
-ctx.globalCompositeOperation = 'lighter';
-for (const { x, y, z, p } of projected) {
-  const d = (z + sphereR) / (2 * sphereR);
-  const alpha = (0.1 + d * 0.6) * (0.5 + totalE * 0.5) * p.brightness;
-  const size = p.size * (0.4 + d * 1.1) * (1 + totalE * 0.6);
-  const lit = p.lit + d * 15 + totalE * 10;
-  const grad = ctx.createRadialGradient(x, y, 0, x, y, size * 2.5);
-  grad.addColorStop(0, `hsla(${p.hue}, ${p.sat}%, ${lit}%, ${alpha})`);
-  grad.addColorStop(0.5, `hsla(${p.hue}, ${p.sat-10}%, ${lit-8}%, ${alpha*0.4})`);
-  grad.addColorStop(1, `hsla(${p.hue}, ${p.sat-15}%, ${lit-15}%, 0)`);
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(x, y, size * 2.5, 0, TAU); ctx.fill();
-  if (d > 0.5) {
-    ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, ${Math.min(lit+20,95)}%, ${alpha*0.8})`;
-    ctx.beginPath(); ctx.arc(x, y, size * 0.6, 0, TAU); ctx.fill();
+  const dt = 0.016;
+  time += dt;
+
+  // --- Conversation state ---
+  const state = getConversationState(time);
+  const isListening = state.phase === 'listening' ? state.intensity : 0;
+  const isSpeaking  = state.phase === 'speaking'  ? state.intensity : 0;
+
+  // Energy levels
+  const listenEnergy = isListening * (0.5 + Math.sin(time * 6) * 0.15 + Math.sin(time * 9.3) * 0.1); // jittery like real input
+  const speakEnergy  = isSpeaking  * (0.6 + Math.sin(time * 3.5) * 0.2 + Math.sin(time * 5.7) * 0.12); // smoother, confident
+  const idleEnergy   = (1 - isListening - isSpeaking) * (0.15 + Math.sin(time * 0.8) * 0.1);
+  const totalE = Math.min(1, idleEnergy + listenEnergy * 0.7 + speakEnergy);
+
+  // --- Color shifts ---
+  // Listening: cooler, slightly blue-teal tint, particles draw inward
+  // Speaking:  rich warm gold/amber, brighter, particles expand
+  const hueShift    = isListening * -12 + isSpeaking * 5;  // listen=bluer, speak=warmer
+  const satBoost    = isListening * 5   + isSpeaking * 15;
+  const litBoost    = isListening * -5  + isSpeaking * 12;
+  const sizeScale   = 1 + isSpeaking * 0.12 - isListening * 0.06;
+
+  // Update particle colors each frame
+  for (const p of particles) {
+    p.hue = p.baseHue + hueShift;
+    p.sat = Math.min(100, p.baseSat + satBoost);
+    p.lit = p.baseLit + litBoost;
+  }
+
+  // Rotation — faster when speaking, slower when listening
+  rotY += dt * (0.10 + isSpeaking * 0.25 + listenEnergy * 0.05);
+  rotX += dt * (0.03 + isSpeaking * 0.06);
+
+  // Orbit tags slowly around the orb
+  orbitAngle += dt * 0.06; // ~1 full revolution per ~105 seconds
+
+  const sphereR = 198 * sizeScale * (1 + totalE * 0.18);
+
+  // Clear
+  ctx.clearRect(0, 0, 1600, 900);
+
+  // --- Core glow (color shifts with state) ---
+  const coreHue = 40 + hueShift;
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sphereR * 0.9);
+  coreGrad.addColorStop(0, `hsla(${coreHue}, ${85 + satBoost * 0.3}%, ${72 + litBoost}%, ${0.3 + totalE * 0.4})`);
+  coreGrad.addColorStop(0.3, `hsla(${coreHue - 2}, ${80 + satBoost * 0.2}%, ${58 + litBoost * 0.5}%, ${0.15 + totalE * 0.25})`);
+  coreGrad.addColorStop(0.6, `hsla(${coreHue - 5}, 70%, 45%, ${0.06 + totalE * 0.1})`);
+  coreGrad.addColorStop(1, 'hsla(30, 60%, 35%, 0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath(); ctx.arc(cx, cy, sphereR * 0.9, 0, TAU); ctx.fill();
+
+  // --- Outer haze (expands when speaking) ---
+  const hazeScale = 1.6 + isSpeaking * 0.3;
+  const hazeGrad = ctx.createRadialGradient(cx, cy, sphereR * 0.3, cx, cy, sphereR * hazeScale);
+  hazeGrad.addColorStop(0, `hsla(${coreHue}, 65%, 58%, ${0.04 + totalE * 0.08})`);
+  hazeGrad.addColorStop(1, `hsla(${coreHue - 5}, 50%, 45%, 0)`);
+  ctx.fillStyle = hazeGrad;
+  ctx.beginPath(); ctx.arc(cx, cy, sphereR * hazeScale, 0, TAU); ctx.fill();
+
+  // --- Speaking: extra warm pulse ring ---
+  if (isSpeaking > 0.1) {
+    const pulseR = sphereR * (1.1 + Math.sin(time * 4) * 0.15);
+    const pulseGrad = ctx.createRadialGradient(cx, cy, pulseR * 0.85, cx, cy, pulseR);
+    pulseGrad.addColorStop(0, `hsla(42, 90%, 65%, 0)`);
+    pulseGrad.addColorStop(0.5, `hsla(42, 90%, 65%, ${isSpeaking * 0.06})`);
+    pulseGrad.addColorStop(1, `hsla(38, 85%, 55%, 0)`);
+    ctx.fillStyle = pulseGrad;
+    ctx.beginPath(); ctx.arc(cx, cy, pulseR, 0, TAU); ctx.fill();
+  }
+
+  // --- Listening: subtle teal inner glow ---
+  if (isListening > 0.1) {
+    const listenGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, sphereR * 0.6);
+    listenGrad.addColorStop(0, `hsla(195, 60%, 65%, ${isListening * 0.12})`);
+    listenGrad.addColorStop(0.5, `hsla(200, 50%, 55%, ${isListening * 0.05})`);
+    listenGrad.addColorStop(1, `hsla(195, 40%, 45%, 0)`);
+    ctx.fillStyle = listenGrad;
+    ctx.beginPath(); ctx.arc(cx, cy, sphereR * 0.6, 0, TAU); ctx.fill();
+  }
+
+  // --- Orbital rings ---
+  const ringAlpha = 0.04 + totalE * 0.04;
+  ctx.strokeStyle = `rgba(184, 134, 11, ${ringAlpha})`;
+  ctx.lineWidth = 1;
+  [sphereR * 1.2, sphereR * 1.45].forEach(r => {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+  });
+  ctx.setLineDash([4, 8]);
+  ctx.strokeStyle = `rgba(184, 134, 11, ${ringAlpha * 0.7})`;
+  ctx.beginPath(); ctx.arc(cx, cy, sphereR * 1.75, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // --- Connection lines to orbiting tags ---
+  for (let i = 0; i < 6; i++) {
+    const angle = orbitAngle + (i * TAU / 6);
+    const floatDx = Math.sin(time * 0.5 + tagFloats[i].phaseX) * tagFloats[i].ampX;
+    const floatDy = Math.cos(time * 0.6 + tagFloats[i].phaseY) * tagFloats[i].ampY;
+    const tx = cx + baseRadius * Math.cos(angle) + floatDx;
+    const ty = cy + baseRadius * Math.sin(angle) + floatDy;
+    const lineAlpha = 0.08 + totalE * 0.08;
+    const grad = ctx.createLinearGradient(cx, cy, tx, ty);
+    const [r,g,b] = dotRGB[i];
+    grad.addColorStop(0, 'rgba(184,134,11,0.0)');
+    grad.addColorStop(0.35, `rgba(${r},${g},${b},${lineAlpha})`);
+    grad.addColorStop(0.75, `rgba(${r},${g},${b},${lineAlpha})`);
+    grad.addColorStop(1, 'rgba(184,134,11,0.0)');
+    ctx.strokeStyle = grad; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+  }
+
+  // --- 3D rotation ---
+  const cosRY = Math.cos(rotY), sinRY = Math.sin(rotY);
+  const cosRX = Math.cos(rotX), sinRX = Math.sin(rotX);
+
+  // --- Project particles ---
+  const projected = [];
+  for (const p of particles) {
+    const wave = Math.sin(p.theta * 4 + time * 2) * Math.cos(p.phi * 3 + time * 1.5);
+    const audioWave = isSpeaking > 0
+      ? Math.sin(p.theta * 6 + time * 4) * Math.cos(p.phi * 5 + time * 3) * isSpeaking * 0.12
+      : 0;
+    const listenWave = isListening > 0
+      ? Math.sin(p.theta * 8 + time * 7) * isListening * 0.04
+      : 0;
+    const r = sphereR * (1 + wave * totalE * 0.18 + audioWave + listenWave);
+    const sinPhi = Math.sin(p.phi);
+    const ta = p.theta + time * p.speed * 0.15;
+    let x = r * sinPhi * Math.cos(ta), y = r * Math.cos(p.phi), z = r * sinPhi * Math.sin(ta);
+    const x1 = x * cosRY - z * sinRY, z1 = x * sinRY + z * cosRY;
+    const y1 = y * cosRX - z1 * sinRX, z2 = y * sinRX + z1 * cosRX;
+    projected.push({ x: cx + x1, y: cy + y1, z: z2, p });
+  }
+  projected.sort((a, b) => a.z - b.z);
+
+  // --- Draw particles ---
+  ctx.globalCompositeOperation = 'lighter';
+  for (const { x, y, z, p } of projected) {
+    const d = (z + sphereR) / (2 * sphereR);
+    const alphaBase = (0.1 + d * 0.6) * (0.5 + totalE * 0.5) * p.brightness;
+    const alpha = alphaBase * (1 + isSpeaking * 0.4);
+    const size = p.size * (0.4 + d * 1.1) * (1 + totalE * 0.6);
+    const lit = p.lit + d * 15 + totalE * 10;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, size * 2.5);
+    grad.addColorStop(0, `hsla(${p.hue}, ${p.sat}%, ${lit}%, ${alpha})`);
+    grad.addColorStop(0.5, `hsla(${p.hue}, ${p.sat-10}%, ${lit-8}%, ${alpha*0.4})`);
+    grad.addColorStop(1, `hsla(${p.hue}, ${p.sat-15}%, ${lit-15}%, 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, size * 2.5, 0, TAU); ctx.fill();
+    if (d > 0.5) {
+      ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, ${Math.min(lit+20,95)}%, ${alpha*0.8})`;
+      ctx.beginPath(); ctx.arc(x, y, size * 0.6, 0, TAU); ctx.fill();
+    }
+  }
+
+  // --- Filament connections ---
+  const filAlpha = 0.03 + totalE * 0.06 + isSpeaking * 0.08;
+  const filDist = 25 + isSpeaking * 15; // more connections when speaking
+  const front = projected.filter(p => p.z > 0);
+  ctx.strokeStyle = `hsla(${40 + hueShift}, 80%, 65%, ${filAlpha})`;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < front.length; i++) {
+    const a = front[i];
+    for (let j = i+1; j < Math.min(i + 8, front.length); j++) {
+      const b = front[j];
+      const dx = a.x-b.x, dy = a.y-b.y;
+      if (Math.sqrt(dx*dx+dy*dy) < filDist) {
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // --- Specular highlight ---
+  const specX = cx - sphereR*0.25, specY = cy - sphereR*0.25;
+  const specGrad = ctx.createRadialGradient(specX, specY, 0, specX, specY, sphereR*0.5);
+  specGrad.addColorStop(0, `hsla(45, 50%, 95%, ${0.08 + totalE * 0.08})`);
+  specGrad.addColorStop(0.5, `hsla(42, 40%, 85%, ${0.03 + totalE * 0.04})`);
+  specGrad.addColorStop(1, 'hsla(40, 30%, 70%, 0)');
+  ctx.fillStyle = specGrad;
+  ctx.beginPath(); ctx.arc(specX, specY, sphereR*0.5, 0, TAU); ctx.fill();
+
+  // --- Update channel tags: orbit slowly around the orb ---
+  for (let i = 0; i < 6; i++) {
+    const angle = orbitAngle + (i * TAU / 6);
+    const baseX = cx + baseRadius * Math.cos(angle);
+    const baseY = cy + baseRadius * Math.sin(angle);
+    const floatX = Math.sin(time * 0.5 + tagFloats[i].phaseX) * tagFloats[i].ampX;
+    const floatY = Math.cos(time * 0.6 + tagFloats[i].phaseY) * tagFloats[i].ampY;
+    channelEls[i].style.left = (baseX + floatX) + 'px';
+    channelEls[i].style.top = (baseY + floatY) + 'px';
   }
 }
 
-const front = projected.filter(p => p.z > 0);
-ctx.strokeStyle = 'hsla(40, 80%, 65%, 0.05)'; ctx.lineWidth = 0.5;
-for (let i = 0; i < front.length; i++) {
-  const a = front[i];
-  for (let j = i+1; j < Math.min(i+8, front.length); j++) {
-    const b = front[j];
-    const dx = a.x-b.x, dy = a.y-b.y;
-    if (Math.sqrt(dx*dx+dy*dy) < 25) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-  }
-}
-ctx.globalCompositeOperation = 'source-over';
-
-const specX = cx - sphereR*0.25, specY = cy - sphereR*0.25;
-const specGrad = ctx.createRadialGradient(specX, specY, 0, specX, specY, sphereR*0.5);
-specGrad.addColorStop(0, 'hsla(45, 50%, 95%, 0.12)');
-specGrad.addColorStop(0.5, 'hsla(42, 40%, 85%, 0.04)');
-specGrad.addColorStop(1, 'hsla(40, 30%, 70%, 0)');
-ctx.fillStyle = specGrad;
-ctx.beginPath(); ctx.arc(specX, specY, sphereR*0.5, 0, TAU); ctx.fill();
+animate();
 </script>
 
 </body>

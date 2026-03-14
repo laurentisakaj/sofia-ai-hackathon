@@ -614,6 +614,23 @@ Exception: If the guest already provided all details (hotel, dates, guests), you
       const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Rome' });
       if (!healthMetrics.dailyRequests[todayKey]) healthMetrics.dailyRequests[todayKey] = { chat: 0, whatsapp: 0, voice: 0, phone: 0 };
       healthMetrics.dailyRequests[todayKey].whatsapp++;
+
+      // Save cross-channel conversation summary to guest profile
+      try {
+        const profile = await getGuestProfileByPhoneAsync(from);
+        if (profile?.email) {
+          const interactions = profile.recentInteractions || [];
+          interactions.push({
+            channel: 'whatsapp',
+            timestamp: new Date().toISOString(),
+            userMessage: incomingText.substring(0, 200),
+            sofiaReply: replyText.substring(0, 200),
+          });
+          if (interactions.length > 10) interactions.splice(0, interactions.length - 10);
+          saveGuestProfileAsync(profile.email, { recentInteractions: interactions })
+            .catch(e => console.error('[CROSS-CHANNEL] Save error:', e.message));
+        }
+      } catch (e) { /* ignore */ }
     }
 
     // Send attachment messages as follow-ups

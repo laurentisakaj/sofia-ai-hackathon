@@ -95,6 +95,15 @@ const saveGuestProfileAsync = async (email, profileData) => {
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
       .substring(0, 1000);
   }
+  // Sanitize recentInteractions (defense against prompt injection via stored data)
+  if (merged.recentInteractions) {
+    const sanitize = (s, max) => s ? String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').substring(0, max) : undefined;
+    merged.recentInteractions = merged.recentInteractions.map(i => ({
+      ...i,
+      userMessage: sanitize(i.userMessage, 200),
+      sofiaReply: sanitize(i.sofiaReply, 200),
+    })).slice(-10);
+  }
   // Auto-compute VIP status
   updateVipStatus(merged);
   profiles[key] = merged;

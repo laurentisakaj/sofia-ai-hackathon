@@ -382,6 +382,28 @@ router.post('/api/chat', rateLimit(60 * 1000, 20), async (req, res) => {
       console.log(`[CHAT] Sending ${allAttachments.length} attachments:`, allAttachments.map(a => ({ type: a.type, title: a.title })));
     }
 
+    // Save cross-channel conversation summary to guest profile
+    if (guestPhone || guestEmail || guestName) {
+      try {
+        const profile = guestPhone ? await getGuestProfileByPhoneAsync(guestPhone)
+          : guestEmail ? await getGuestProfileAsync(guestEmail)
+          : await getGuestProfileByNameAsync(guestName);
+        if (profile?.email) {
+          const interactions = profile.recentInteractions || [];
+          interactions.push({
+            channel: 'web',
+            timestamp: new Date().toISOString(),
+            userMessage: message.substring(0, 200),
+            sofiaReply: reply.substring(0, 200),
+          });
+          // Keep only last 10 interactions
+          if (interactions.length > 10) interactions.splice(0, interactions.length - 10);
+          saveGuestProfileAsync(profile.email, { recentInteractions: interactions })
+            .catch(e => console.error('[CROSS-CHANNEL] Save error:', e.message));
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     healthMetrics.lastSuccess.chat = Date.now();
     healthMetrics.lastSuccess.gemini = Date.now();
     healthMetrics.totalRequests.chat++;
