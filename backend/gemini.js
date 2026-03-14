@@ -1117,6 +1117,19 @@ const geminiToolDeclarations = [{
               }
             },
             description: "Annotation points to mark specific parts/buttons on the object. Use when the guest asks HOW to use something — mark each button/control with a labeled dot directly on the camera feed."
+          },
+          translated_items: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                original: { type: SchemaType.STRING, description: "Original text in source language" },
+                translated: { type: SchemaType.STRING, description: "Translation in the guest's language" },
+                price: { type: SchemaType.STRING, description: "Price if visible (e.g. '€12.50')" },
+                note: { type: SchemaType.STRING, description: "Brief note: 'vegetarian', 'contains nuts', 'house specialty'" }
+              }
+            },
+            description: "Use for menu/sign/document translations. List each item with original text, translation, price if visible, and dietary/contextual notes. Include ALL readable items, not just a summary."
           }
         },
         required: ["object_type", "object_name", "description"]

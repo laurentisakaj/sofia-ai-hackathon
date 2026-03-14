@@ -50,6 +50,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
 
     // Visual identification state — multiple live AR tags
     type IdentMarker = { label: string; x: number; y: number; step: number | null };
+    type TranslatedItem = { original: string; translated: string; price?: string; note?: string };
     type IdentTag = {
         id: string;
         object_type: string;
@@ -59,6 +60,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
         description: string;
         actions: Array<{ label: string; instruction: string }>;
         markers: IdentMarker[];
+        translated_items?: TranslatedItem[];
         position_x: number;
         position_y: number;
         _originalX: number;
@@ -434,6 +436,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                                 description: p.description,
                                 actions: p.actions || [],
                                 markers: p.markers || [],
+                                translated_items: p.translated_items || [],
                                 position_x: p.position_x ?? 50,
                                 position_y: p.position_y ?? 50,
                                 _originalX: p.position_x ?? 50,
@@ -977,8 +980,24 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
 
                                     {/* Expanded detail */}
                                     {isExpanded && (
-                                        <div className="px-3 pb-3" style={{ animation: 'badge-in 0.2s ease-out' }}>
-                                            <p className="text-white/70 text-[11px] leading-relaxed mb-2 line-clamp-3">{tag.description}</p>
+                                        <div className="px-3 pb-3 max-h-[45vh] overflow-y-auto no-scrollbar" style={{ animation: 'badge-in 0.2s ease-out' }}>
+                                            <p className="text-white/70 text-[11px] leading-relaxed mb-2">{tag.description}</p>
+                                            {tag.translated_items && tag.translated_items.length > 0 && (
+                                                <div className="mb-2 space-y-1">
+                                                    {tag.translated_items.map((item, ti) => (
+                                                        <div key={ti} className="flex items-start gap-2 py-1 border-b border-white/5 last:border-b-0">
+                                                            <div className="flex-1 min-w-0">
+                                                                <span className="text-white/90 text-[11px] font-medium block">{item.translated}</span>
+                                                                <span className="text-white/40 text-[10px] italic block">{item.original}</span>
+                                                                {item.note && <span className="text-amber-400/70 text-[9px] block">{item.note}</span>}
+                                                            </div>
+                                                            {item.price && (
+                                                                <span className="text-white/60 text-[10px] font-medium whitespace-nowrap">{item.price}</span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                             {tag.markers.length > 0 && (
                                                 <div className="space-y-1 mb-2">
                                                     {tag.markers.map((marker, mi) => (
