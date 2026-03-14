@@ -1266,6 +1266,15 @@ function getVoiceToolDeclarations() {
       description: "JSON string of translated items for menus/signs/documents, e.g. '[{\"original\":\"Bistecca alla Fiorentina\",\"translated\":\"Florentine T-bone Steak\",\"price\":\"€45\",\"note\":\"house specialty\"}]'. Each item has original, translated, optional price, optional note. Include ALL readable items."
     };
   }
+  // Flatten show_visual_assist items — nested array-of-objects can cause Gemini Live to send strings
+  const vaTool = fnDecls.find(f => f.name === 'show_visual_assist');
+  if (vaTool) {
+    delete vaTool.parameters.properties.items;
+    vaTool.parameters.properties.items_json = {
+      type: SchemaType.STRING,
+      description: "JSON string of card items, e.g. '[{\"icon\":\"snowflake\",\"text\":\"Press the ON button\",\"detail\":\"Top button on remote\"}]'. Each item has icon (snowflake/wifi/lock/tv/phone/map/clock/church/coffee/info), text, optional detail, optional action (call_reception/open_map)."
+    };
+  }
   return voiceDecls;
 }
 

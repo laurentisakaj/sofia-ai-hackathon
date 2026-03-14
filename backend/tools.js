@@ -573,15 +573,22 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
       return { success: true, message: `Overlay shown on screen for: ${identification.object_name}. Do NOT describe it again — the guest can see the tag and markers. Just ask if they need help.` };
     }
     case 'show_visual_assist': {
+      // Parse items — from native array (chat) or JSON string (voice — flattened), or plain strings
+      let rawItems = args.items || [];
+      if (!Array.isArray(rawItems) || rawItems.length === 0) {
+        if (args.items_json) {
+          try { rawItems = JSON.parse(args.items_json); } catch { rawItems = []; }
+        } else if (typeof rawItems === 'string') {
+          try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
+        }
+      }
       const assistPayload = {
         type: args.type || 'info',
         title: args.title || 'Info',
-        items: (args.items || []).map(item => ({
-          icon: item.icon || 'info',
-          text: item.text || '',
-          detail: item.detail || null,
-          action: item.action || null,
-        })),
+        items: (Array.isArray(rawItems) ? rawItems : []).map(item => {
+          if (typeof item === 'string') return { icon: 'info', text: item, detail: null, action: null };
+          return { icon: item.icon || 'info', text: item.text || '', detail: item.detail || null, action: item.action || null };
+        }),
         auto_dismiss: Math.min(Math.max(args.auto_dismiss || 12, 5), 30),
       };
       generatedAttachments.push({ type: 'visual_assist', payload: assistPayload });
