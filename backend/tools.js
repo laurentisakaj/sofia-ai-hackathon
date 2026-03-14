@@ -535,6 +535,11 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
       if (!rawMarkers.length && args.markers_json) {
         try { rawMarkers = JSON.parse(args.markers_json); } catch { rawMarkers = []; }
       }
+      // Parse translated items (menu/sign translations)
+      let rawTranslated = args.translated_items || [];
+      if (!rawTranslated.length && args.translated_items_json) {
+        try { rawTranslated = JSON.parse(args.translated_items_json); } catch { rawTranslated = []; }
+      }
       const identification = {
         object_type: args.object_type || 'hotel_feature',
         object_name: args.object_name || 'Unknown',
@@ -552,6 +557,12 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
           x: Math.min(100, Math.max(0, m.x ?? 50)),
           y: Math.min(100, Math.max(0, m.y ?? 50)),
           step: m.step || null
+        })),
+        translated_items: (Array.isArray(rawTranslated) ? rawTranslated : []).slice(0, 30).map(t => ({
+          original: (t.original || '').substring(0, 200),
+          translated: (t.translated || '').substring(0, 200),
+          price: t.price ? String(t.price).substring(0, 20) : undefined,
+          note: t.note ? String(t.note).substring(0, 100) : undefined
         }))
       };
       generatedAttachments.push({

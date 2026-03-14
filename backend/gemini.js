@@ -1251,6 +1251,11 @@ function getVoiceToolDeclarations() {
       type: SchemaType.STRING,
       description: "JSON string of annotation points to mark on the camera feed, e.g. '[{\"label\":\"ON/OFF\",\"x\":30,\"y\":20,\"step\":1},{\"label\":\"Temp +\",\"x\":50,\"y\":40,\"step\":2}]'. Each marker has label, x (0-100), y (0-100), and optional step number."
     };
+    delete viTool.parameters.properties.translated_items;
+    viTool.parameters.properties.translated_items_json = {
+      type: SchemaType.STRING,
+      description: "JSON string of translated items for menus/signs/documents, e.g. '[{\"original\":\"Bistecca alla Fiorentina\",\"translated\":\"Florentine T-bone Steak\",\"price\":\"€45\",\"note\":\"house specialty\"}]'. Each item has original, translated, optional price, optional note. Include ALL readable items."
+    };
   }
   return voiceDecls;
 }
