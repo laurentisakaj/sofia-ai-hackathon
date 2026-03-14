@@ -1274,6 +1274,10 @@ function getVoiceToolDeclarations() {
       type: SchemaType.STRING,
       description: "JSON string of card items, e.g. '[{\"icon\":\"snowflake\",\"text\":\"Press the ON button\",\"detail\":\"Top button on remote\"}]'. Each item has icon (snowflake/wifi/lock/tv/phone/map/clock/church/coffee/info), text, optional detail, optional action (call_reception/open_map)."
     };
+    // Update required array to match renamed property
+    if (vaTool.parameters.required) {
+      vaTool.parameters.required = vaTool.parameters.required.map(r => r === 'items' ? 'items_json' : r);
+    }
   }
   return voiceDecls;
 }
