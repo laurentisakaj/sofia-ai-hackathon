@@ -102,6 +102,7 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
     // Audio processing refs
     const nextStartTimeRef = useRef<number>(0);
     const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+    const audioQueueRef = useRef<Promise<void>>(Promise.resolve()); // serializes audio decoding
     const isMutedRef = useRef(false);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -372,22 +373,28 @@ const VoiceWidget = forwardRef<VoiceWidgetRef, VoiceWidgetProps>(({ isOpen, onCl
                         }
                     }
                     if (msg.audio && outputAudioContextRef.current && outputNodeRef.current) {
-                        const ctx = outputAudioContextRef.current;
-                        nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
-                        try {
-                            const audioData = decode(msg.audio);
-                            const audioBuffer = await decodeAudioData(audioData, ctx, 24000, 1);
-                            const source = ctx.createBufferSource();
-                            source.buffer = audioBuffer;
-                            source.connect(outputNodeRef.current);
-                            source.onended = () => sourcesRef.current.delete(source);
-                            source.start(nextStartTimeRef.current);
-                            nextStartTimeRef.current += audioBuffer.duration;
-                            sourcesRef.current.add(source);
-                        } catch (err) { console.error("Audio Decode Error:", err); }
+                        const audioB64 = msg.audio;
+                        audioQueueRef.current = audioQueueRef.current.then(async () => {
+                            const ctx = outputAudioContextRef.current;
+                            const node = outputNodeRef.current;
+                            if (!ctx || !node) return;
+                            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+                            try {
+                                const audioData = decode(audioB64);
+                                const audioBuffer = await decodeAudioData(audioData, ctx, 24000, 1);
+                                const source = ctx.createBufferSource();
+                                source.buffer = audioBuffer;
+                                source.connect(node);
+                                source.onended = () => sourcesRef.current.delete(source);
+                                source.start(nextStartTimeRef.current);
+                                nextStartTimeRef.current += audioBuffer.duration;
+                                sourcesRef.current.add(source);
+                            } catch (err) { console.error("Audio Decode Error:", err); }
+                        });
                     }
                 } else if (msg.type === 'interrupted') {
                     // Barge-in: user started speaking — stop all queued Sofia audio immediately
+                    audioQueueRef.current = Promise.resolve(); // discard pending decodes
                     for (const src of sourcesRef.current) {
                         try { src.stop(); } catch (_) {}
                     }
