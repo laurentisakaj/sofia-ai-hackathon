@@ -110,6 +110,24 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
         });
         generatedAttachments.push(...places.attachments);
       }
+      // Auto-generate visual_assist card for voice mode (place cards don't render there)
+      if (channel === 'voice' && places.nearby_places?.length > 0) {
+        const topPlaces = places.nearby_places.slice(0, 5);
+        generatedAttachments.push({
+          type: 'visual_assist',
+          payload: {
+            type: 'info',
+            title: args.category ? `Nearby ${args.category}` : 'Nearby Places',
+            items: topPlaces.map(p => ({
+              icon: 'map',
+              text: p.name,
+              detail: `${p.address || ''}${p.rating ? ` · ★${p.rating}` : ''}${p.open_now ? ' · Open' : ''}`,
+              action: null
+            })),
+            auto_dismiss: 20
+          }
+        });
+      }
       return places;
     }
     case 'get_public_transport_info': {

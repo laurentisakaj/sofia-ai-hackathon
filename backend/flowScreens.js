@@ -224,7 +224,7 @@ async function handleBookingScreen(screen, data, labels, lang, phone) {
       console.log(`[FLOW] Booking quotation result: success=${quotation.success}, link=${bookingLink?.substring(0, 60)}`);
 
       // EmbeddedLink requires a valid URL — use hotel website as fallback
-      const safeLink = bookingLink || (process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app');
+      const safeLink = bookingLink || (process.env.BASE_URL || 'https://ai.ognissantihotels.com');
 
       return {
         screen: 'BOOKING_CONFIRMATION',
@@ -242,7 +242,7 @@ async function handleBookingScreen(screen, data, labels, lang, phone) {
         data: {
           ...labels,
           total_price: `€${selected.total_price || selected.price_per_night}`,
-          booking_link: process.env.BASE_URL || 'https://sofia-ai-942607221166.europe-west1.run.app',
+          booking_link: process.env.BASE_URL || 'https://ai.ognissantihotels.com',
           summary: `${data.hotel_name} | ${selected.name} | ${data.checkin_date} → ${data.checkout_date}`,
         }
       };
