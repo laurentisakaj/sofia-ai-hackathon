@@ -770,9 +770,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = () => {
   }, []);
 
   useEffect(() => {
-    const openMap = () => { setIsMapOpen(true); setPinCount(getPinCount()); };
-    window.addEventListener('map-pin-added', openMap);
-    return () => window.removeEventListener('map-pin-added', openMap);
+    const updatePinCount = () => { setPinCount(getPinCount()); };
+    window.addEventListener('map-pin-added', updatePinCount);
+    return () => window.removeEventListener('map-pin-added', updatePinCount);
   }, []);
 
   return (
