@@ -1240,8 +1240,6 @@ const geminiToolDeclarations = [{
     },
   ]
 },
-  { googleSearch: {} },
-  { urlContext: {} },
 ];
 
 // Voice/phone-friendly tool declarations: same tools but with simplified quotation schema
