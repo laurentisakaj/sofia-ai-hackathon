@@ -48,3 +48,9 @@ flows_public.pem
 CLAUDE.md
 .claude/
 .DS_Store
+
+# Temp recording scripts
+cover-record.html
+export-gif.mjs
+export-orb.mjs
+record-cover.mjs
