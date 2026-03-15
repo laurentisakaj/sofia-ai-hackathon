@@ -47,3 +47,4 @@ flows_public.pem
 # Claude Code
 CLAUDE.md
 .claude/
+.DS_Store
