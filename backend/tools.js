@@ -511,7 +511,7 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
       if (!phone) return { success: false, message: 'Guest phone number is required.' };
 
       const flowIdMap = {
-        booking: process.env.FLOW_ID_BOOKING,
+        // booking: removed - handled conversationally
         checkin: process.env.FLOW_ID_CHECKIN,
         tour: process.env.FLOW_ID_TOURS,
         feedback: process.env.FLOW_ID_FEEDBACK,
@@ -522,13 +522,13 @@ async function executeToolCall(name, args, generatedAttachments, chatSession, ch
       const lang = args.language || detectLanguageFromPhone(phone) || 'en';
       const ctaMap = {
         booking: { it: 'Prenota ora', en: 'Book Now', fr: 'Réserver', de: 'Jetzt buchen', es: 'Reservar' },
-        checkin: { it: 'Check-in', en: 'Check-in', fr: 'Enregistrement', de: 'Check-in', es: 'Check-in' },
+        checkin: { it: 'Dettagli Arrivo', en: 'Arrival Details', fr: 'Détails Arrivée', de: 'Ankunftsdetails', es: 'Detalles Llegada' },
         tour: { it: 'Prenota tour', en: 'Book Tour', fr: 'Réserver tour', de: 'Tour buchen', es: 'Reservar tour' },
         feedback: { it: 'Lascia feedback', en: 'Leave Feedback', fr: 'Donner avis', de: 'Feedback geben', es: 'Dejar opinión' },
       };
       const bodyMap = {
         booking: { it: 'Compila il modulo per verificare disponibilità e prezzi in tempo reale.', en: 'Fill out the form to check real-time availability and prices.', fr: 'Remplissez le formulaire pour vérifier la disponibilité en temps réel.', de: 'Füllen Sie das Formular aus, um Verfügbarkeit und Preise in Echtzeit zu prüfen.', es: 'Completa el formulario para verificar disponibilidad y precios en tiempo real.' },
-        checkin: { it: 'Completa il check-in online per un arrivo veloce.', en: 'Complete online check-in for a fast arrival.', fr: "Complétez l'enregistrement en ligne pour une arrivée rapide.", de: 'Erledigen Sie den Online-Check-in für eine schnelle Ankunft.', es: 'Completa el check-in online para una llegada rápida.' },
+        checkin: { it: 'Comunicaci i dettagli del tuo arrivo.', en: 'Share your arrival details with us.', fr: "Complétez l'enregistrement en ligne pour une arrivée rapide.", de: 'Erledigen Sie den Online-Check-in für eine schnelle Ankunft.', es: 'Completa el check-in online para una llegada rápida.' },
         tour: { it: 'Scopri e prenota tour ed esperienze a Firenze.', en: 'Discover and book tours and experiences in Florence.', fr: 'Découvrez et réservez des tours et expériences à Florence.', de: 'Entdecken und buchen Sie Touren und Erlebnisse in Florenz.', es: 'Descubre y reserva tours y experiencias en Florencia.' },
         feedback: { it: 'La tua opinione è importante per noi!', en: 'Your feedback is important to us!', fr: 'Votre avis est important pour nous !', de: 'Ihr Feedback ist uns wichtig!', es: '¡Tu opinión es importante para nosotros!' },
       };

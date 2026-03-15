@@ -313,11 +313,14 @@ router.post('/webhook', async (req, res) => {
             }
 
             // Pass flow completion as text to Gemini for contextual response
+            const bLink = flowData.booking_link || (flowData.extension_message_response && flowData.extension_message_response.params && flowData.extension_message_response.params.booking_link) || "";
+            const tLink = flowData.booking_url || (flowData.extension_message_response && flowData.extension_message_response.params && flowData.extension_message_response.params.booking_url) || "";
+            const fSummary = flowData.summary || (flowData.extension_message_response && flowData.extension_message_response.params && flowData.extension_message_response.params.summary) || "";
             const flowCompletionHints = {
-              booking: 'The guest completed the booking form and received a booking link. Do NOT ask for dates/hotel/guests again — just confirm and ask if they need anything else.',
-              checkin: 'The guest completed online check-in. Confirm it was received and wish them a great stay.',
-              tour: 'The guest completed the tour booking form and received a booking link. Confirm and ask if they need anything else.',
-              feedback: 'The guest submitted their feedback. Thank them warmly.',
+              booking: "The guest completed the booking form. BOOKING LINK: " + bLink + " Summary: " + fSummary + ". YOU MUST include this booking link in your reply. Do NOT ask for dates again.",
+              checkin: "The guest submitted arrival details. Confirm receipt.",
+              tour: "The guest completed tour booking. TOUR URL: " + tLink + ". YOU MUST include this URL in your reply.",
+              feedback: "The guest submitted feedback. Thank them.",
             };
             incomingText = `[Flow completed: ${flowType}] ${flowCompletionHints[flowType] || ''}`;
           } catch (parseErr) {
@@ -437,7 +440,7 @@ Exception: If the guest already provided all details (hotel, dates, guests), you
     sessionData.lastUsed = Date.now();
 
     // Send to Gemini
-    const sendWithTimeout = (target, parts, timeoutMs = 25000) => {
+    const sendWithTimeout = (target, parts, timeoutMs = 55000) => {
       return Promise.race([
         target.sendMessage(parts),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), timeoutMs))

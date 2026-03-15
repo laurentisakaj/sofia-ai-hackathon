@@ -1,5 +1,10 @@
 /**
  * backend/guests.js — Guest profile CRUD (encrypted at rest)
+ *
+ * Supports optional Firestore sync for shared profiles between servers.
+ * Set FIRESTORE_PROJECT_ID env var to enable. Local JSON file is always
+ * kept as backup. On reads: Firestore first (2s timeout), fallback local.
+ * On writes: local first, then fire-and-forget Firestore write.
  */
 
 import fs from 'fs';
@@ -10,6 +15,101 @@ import {
   setGuestProfilesCache,
 } from '../lib/config.js';
 import { decryptData, readEncryptedJsonFileAsync, writeEncryptedJsonFileAsync } from '../lib/encryption.js';
+
+// ---------------------------------------------------------------------------
+// Firestore setup (optional — only if FIRESTORE_PROJECT_ID is set)
+// ---------------------------------------------------------------------------
+const FIRESTORE_PROJECT_ID = process.env.FIRESTORE_PROJECT_ID;
+const FIRESTORE_COLLECTION = 'guest_profiles';
+let firestoreDb = null;
+
+if (FIRESTORE_PROJECT_ID) {
+  try {
+    const { Firestore } = await import('@google-cloud/firestore');
+    firestoreDb = new Firestore({ projectId: FIRESTORE_PROJECT_ID });
+    console.log(`[guests] Firestore enabled — project: ${FIRESTORE_PROJECT_ID}, collection: ${FIRESTORE_COLLECTION}`);
+  } catch (err) {
+    console.error('[guests] Failed to initialize Firestore:', err.message);
+  }
+}
+
+/**
+ * Write a single guest profile to Firestore (fire-and-forget).
+ * Converts Date objects and undefined values to Firestore-safe formats.
+ */
+const firestoreSaveProfile = (email, profileData) => {
+  if (!firestoreDb) return;
+  const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(email);
+  docRef.set(profileData, { merge: true }).catch(err => {
+    console.error(`[guests] Firestore write failed for ${email}:`, err.message);
+  });
+};
+
+/**
+ * Read a single guest profile from Firestore with a timeout.
+ * Returns null if Firestore is not configured, doc doesn't exist, or timeout.
+ */
+const firestoreGetProfile = async (email, timeoutMs = 2000) => {
+  if (!firestoreDb) return null;
+  try {
+    const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(email);
+    const docSnap = await Promise.race([
+      docRef.get(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), timeoutMs)),
+    ]);
+    if (docSnap.exists) return docSnap.data();
+  } catch (err) {
+    console.warn(`[guests] Firestore read failed for ${email}:`, err.message);
+  }
+  return null;
+};
+
+/**
+ * Read all guest profiles from Firestore with a timeout.
+ * Returns null if Firestore is not configured or on failure.
+ */
+const firestoreGetAllProfiles = async (timeoutMs = 3000) => {
+  if (!firestoreDb) return null;
+  try {
+    const colRef = firestoreDb.collection(FIRESTORE_COLLECTION);
+    const snapshot = await Promise.race([
+      colRef.get(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), timeoutMs)),
+    ]);
+    const profiles = {};
+    snapshot.forEach(doc => { profiles[doc.id] = doc.data(); });
+    return profiles;
+  } catch (err) {
+    console.warn('[guests] Firestore bulk read failed:', err.message);
+  }
+  return null;
+};
+
+/**
+ * Search Firestore profiles by a field matcher function.
+ * Loads all profiles and filters. Returns first match or null.
+ */
+const firestoreFindProfile = async (matcherFn, timeoutMs = 2000) => {
+  if (!firestoreDb) return null;
+  try {
+    const colRef = firestoreDb.collection(FIRESTORE_COLLECTION);
+    const snapshot = await Promise.race([
+      colRef.get(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), timeoutMs)),
+    ]);
+    for (const doc of snapshot.docs) {
+      const profile = doc.data();
+      if (matcherFn(profile)) return profile;
+    }
+  } catch (err) {
+    console.warn('[guests] Firestore search failed:', err.message);
+  }
+  return null;
+};
+
+// ---------------------------------------------------------------------------
+// Original local file operations (unchanged logic)
+// ---------------------------------------------------------------------------
 
 const loadGuestProfiles = () => {
   const cached = getGuestProfilesCache();
@@ -31,6 +131,21 @@ const loadGuestProfiles = () => {
 };
 
 const loadGuestProfilesAsync = async () => {
+  // Try Firestore first for freshest data
+  const firestoreProfiles = await firestoreGetAllProfiles();
+  if (firestoreProfiles && Object.keys(firestoreProfiles).length > 0) {
+    // Merge: Firestore wins on conflicts (fresher), but keep any local-only profiles
+    try {
+      const localData = await readEncryptedJsonFileAsync(GUEST_PROFILES_FILE, {});
+      const merged = { ...localData, ...firestoreProfiles };
+      setGuestProfilesCache(merged);
+      return merged;
+    } catch (_) {
+      setGuestProfilesCache(firestoreProfiles);
+      return firestoreProfiles;
+    }
+  }
+  // Fallback to local
   try {
     const data = await readEncryptedJsonFileAsync(GUEST_PROFILES_FILE, {});
     setGuestProfilesCache(data);
@@ -47,6 +162,8 @@ const saveGuestProfile = (email, profileData) => {
   profiles[key] = { ...existing, ...profileData, email: key, last_seen: new Date().toISOString() };
   setGuestProfilesCache(profiles);
   writeEncryptedJsonFileAsync(GUEST_PROFILES_FILE, profiles).catch(e => console.error('Failed to save guest profile:', e.message));
+  // Fire-and-forget Firestore write
+  firestoreSaveProfile(key, profiles[key]);
   return profiles[key];
 };
 
@@ -109,6 +226,8 @@ const saveGuestProfileAsync = async (email, profileData) => {
   profiles[key] = merged;
   setGuestProfilesCache(profiles);
   await writeEncryptedJsonFileAsync(GUEST_PROFILES_FILE, profiles);
+  // Fire-and-forget Firestore write
+  firestoreSaveProfile(key, merged);
   return profiles[key];
 };
 
@@ -120,8 +239,13 @@ const getGuestProfile = (email) => {
 
 const getGuestProfileAsync = async (email) => {
   if (!email) return null;
+  const key = email.toLowerCase().trim();
+  // Try Firestore first (freshest data from either server)
+  const firestoreProfile = await firestoreGetProfile(key);
+  if (firestoreProfile) return firestoreProfile;
+  // Fallback to local
   const profiles = await loadGuestProfilesAsync();
-  return profiles[email.toLowerCase().trim()] || null;
+  return profiles[key] || null;
 };
 
 const getGuestProfileByName = (name) => {
@@ -139,6 +263,12 @@ const getGuestProfileByPhoneAsync = async (phone) => {
   if (!phone) return null;
   const normalized = phone.replace(/[^0-9]/g, '');
   if (!normalized) return null;
+  // Try Firestore first
+  const firestoreMatch = await firestoreFindProfile(profile =>
+    profile.phones && profile.phones.some(p => p.replace(/[^0-9]/g, '') === normalized)
+  );
+  if (firestoreMatch) return firestoreMatch;
+  // Fallback to local
   const profiles = await loadGuestProfilesAsync();
   for (const [, profile] of Object.entries(profiles)) {
     if (profile.phones && profile.phones.some(p => p.replace(/[^0-9]/g, '') === normalized)) {
@@ -150,8 +280,17 @@ const getGuestProfileByPhoneAsync = async (phone) => {
 
 const getGuestProfileByNameAsync = async (name) => {
   if (!name) return null;
-  const profiles = await loadGuestProfilesAsync();
   const nameLower = name.toLowerCase().trim();
+  // Try Firestore first
+  const firestoreMatch = await firestoreFindProfile(profile => {
+    if (!profile.name) return false;
+    const profileNameLower = profile.name.toLowerCase().trim();
+    return profileNameLower === nameLower ||
+           profileNameLower.split(' ')[0] === nameLower.split(' ')[0];
+  });
+  if (firestoreMatch) return firestoreMatch;
+  // Fallback to local
+  const profiles = await loadGuestProfilesAsync();
   for (const [, profile] of Object.entries(profiles)) {
     if (profile.name && profile.name.toLowerCase().trim() === nameLower) return profile;
     if (profile.name && profile.name.toLowerCase().split(' ')[0] === nameLower.split(' ')[0]) return profile;

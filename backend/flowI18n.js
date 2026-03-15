@@ -72,7 +72,7 @@ const FLOW_LABELS = {
 
   checkin: {
     screen1_title: {
-      it: 'Check-in Online', en: 'Online Check-in', fr: 'Enregistrement en Ligne',
+      it: 'Dettagli Arrivo', en: 'Arrival Details', fr: 'Enregistrement en Ligne',
       de: 'Online Check-in', es: 'Check-in en Línea'
     },
     label_name: {

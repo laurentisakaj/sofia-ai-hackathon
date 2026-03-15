@@ -659,7 +659,7 @@ const scrapeHotelPrices = async (hotelConfig, checkInStr, checkOutStr, adults, c
 
     // Group rooms with capacity filtering
     const roomGroups = new Map();
-    (priceData.prices || []).forEach((p) => {
+    (Array.isArray(priceData.prices) ? priceData.prices : []).forEach((p) => {
       // Capture tourist_tax
       if (p.tourist_tax && apiCityTax === 0) {
         // API returns the total tax for all guests in the room.
